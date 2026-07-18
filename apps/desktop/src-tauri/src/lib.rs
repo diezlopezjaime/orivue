@@ -1,9 +1,17 @@
+#[cfg(not(debug_assertions))]
 use std::path::PathBuf;
 use std::sync::{Mutex, RwLock};
 
-use serde::{Deserialize, Serialize};
-use tauri::{Emitter, Manager, RunEvent, State};
-use tauri_plugin_shell::process::{CommandChild, CommandEvent};
+#[cfg(not(debug_assertions))]
+use serde::Deserialize;
+use serde::Serialize;
+#[cfg(not(debug_assertions))]
+use tauri::Emitter;
+use tauri::{Manager, RunEvent, State};
+use tauri_plugin_shell::process::CommandChild;
+#[cfg(not(debug_assertions))]
+use tauri_plugin_shell::process::CommandEvent;
+#[cfg(not(debug_assertions))]
 use tauri_plugin_shell::ShellExt;
 use uuid::Uuid;
 
@@ -14,6 +22,7 @@ struct ServiceConnection {
     token: String,
 }
 
+#[cfg(not(debug_assertions))]
 #[derive(Deserialize)]
 struct ReadyEvent {
     event: String,
@@ -120,13 +129,13 @@ fn start_service(_app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 fn stop_service(app: &tauri::AppHandle) {
     let state = app.state::<ServiceState>();
     if let Ok(mut child) = state.child.lock() {
-        if let Some(mut child) = child.take() {
+        if let Some(child) = child.take() {
             let _ = child.kill();
         }
     }
     if let Ok(mut connection) = state.connection.write() {
         connection.take();
-    }
+    };
 }
 
 pub fn run() {
