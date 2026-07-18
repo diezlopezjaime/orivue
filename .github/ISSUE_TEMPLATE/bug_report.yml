@@ -1,0 +1,59 @@
+name: Informe de error
+description: Un fallo reproducible con datos sintéticos y sin secretos
+title: '[Bug]: '
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gracias por informar. **No pegues listas, URLs privadas, tokens, credenciales, cookies ni bases SQLite.** Redacta host, path y query. Para vulnerabilidades usa el canal privado descrito en SECURITY.md.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Comprobaciones previas
+      options:
+        - label: He buscado issues existentes.
+          required: true
+        - label: Puedo reproducirlo con datos ficticios o he eliminado todo dato sensible.
+          required: true
+        - label: No es un informe de seguridad ni una solicitud para eludir controles de acceso.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versión o commit
+      placeholder: v0.1.0 o SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Plataforma
+      options: [Web, Windows, Linux, macOS, Otra]
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Pasos mínimos para reproducir
+      description: Usa fixtures del repositorio o valores example.invalid.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Resultado esperado
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Resultado observado
+    validations:
+      required: true
+  - type: textarea
+    id: sanitized_logs
+    attributes:
+      label: Logs sanitizados (opcional)
+      description: Revisa manualmente antes de enviar; una redacción automática no es infalible.
+      render: text

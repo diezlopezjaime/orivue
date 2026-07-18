@@ -1,0 +1,21 @@
+{
+  "name": "@orivue/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Orivue desktop shell built with Tauri 2",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "desktop:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
+    "desktop:build": "pnpm prepare:sidecar && tauri build",
+    "desktop:build:ci": "tauri build --no-bundle",
+    "desktop:check": "cargo check --manifest-path src-tauri/Cargo.toml",
+    "prepare:sidecar": "node scripts/prepare-sidecar.mjs",
+    "icons": "tauri icon src-tauri/icons/orivue-source.svg --output src-tauri/icons"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.4",
+    "@yao-pkg/pkg": "6.21.0"
+  }
+}

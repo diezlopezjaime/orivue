@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Orivue</title>
+  <desc id="desc">Una brújula luminosa dentro de una pantalla redondeada</desc>
+  <defs>
+    <linearGradient id="bg" x1="76" y1="48" x2="436" y2="464" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#17213C"/>
+      <stop offset="1" stop-color="#080D1C"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="169" y1="360" x2="355" y2="145" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67E8F9"/>
+      <stop offset="1" stop-color="#A78BFA"/>
+    </linearGradient>
+  </defs>
+  <rect x="20" y="20" width="472" height="472" rx="112" fill="url(#bg)"/>
+  <rect x="50" y="50" width="412" height="412" rx="86" fill="none" stroke="#FFFFFF" stroke-opacity=".10" stroke-width="4"/>
+  <circle cx="256" cy="256" r="137" fill="#0B1329" stroke="#FFFFFF" stroke-opacity=".16" stroke-width="12"/>
+  <path d="M326 151 281 281 151 326l45-130 130-45Z" fill="url(#beam)"/>
+  <path d="m281 281-85-85 130-45-45 130Z" fill="#E7F9FF" fill-opacity=".92"/>
+  <circle cx="256" cy="256" r="24" fill="#0B1329" stroke="#FFFFFF" stroke-width="10"/>
+  <path d="M256 91v20M421 256h-20M256 421v-20M91 256h20" stroke="#A5F3FC" stroke-width="12" stroke-linecap="round"/>
+</svg>
