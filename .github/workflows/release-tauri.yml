@@ -42,14 +42,15 @@ jobs:
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @orivue/desktop prepare:sidecar
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: apps/desktop
-          tauriScript: pnpm desktop:build
+          tauriScript: pnpm tauri
           tagName: ${{ github.event.inputs.tag || github.ref_name }}
           releaseName: Orivue ${{ github.event.inputs.tag || github.ref_name }}
           releaseBody: Artefactos Windows sin firma de una versión preliminar. Consulta CHANGELOG.md y verifica el origen antes de instalar.
-          releaseDraft: true
+          releaseDraft: false
           prerelease: true
