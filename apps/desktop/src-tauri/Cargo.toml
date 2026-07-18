@@ -1,0 +1,22 @@
+[package]
+name = "orivue-desktop"
+version = "0.1.0"
+description = "Local-first Orivue desktop application"
+authors = ["Jaime and contributors"]
+license = "MIT"
+edition = "2021"
+rust-version = "1.84"
+
+[lib]
+name = "orivue_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+uuid = { version = "1", features = ["v4"] }

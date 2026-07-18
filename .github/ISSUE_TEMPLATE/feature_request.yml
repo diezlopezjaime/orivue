@@ -1,0 +1,40 @@
+name: Propuesta de mejora
+description: Propón una mejora legal, local-first y acotada
+title: '[Idea]: '
+labels: [enhancement, triage]
+body:
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Alcance
+      options:
+        - label: He buscado propuestas existentes.
+          required: true
+        - label: La propuesta no añade contenido, listas ni mecanismos para eludir DRM, pagos o autenticación.
+          required: true
+        - label: No contiene URLs, tokens ni datos privados.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema de usuario
+      description: Explica el problema antes de la solución.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Solución propuesta
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas
+  - type: textarea
+    id: security
+    attributes:
+      label: Impacto en privacidad, red y accesibilidad
+      description: Indica “ninguno” si no aplica y por qué.
+    validations:
+      required: true

@@ -1,0 +1,55 @@
+name: Release Tauri
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag existente (por ejemplo v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Exigir lockfiles de release
+        run: test -f pnpm-lock.yaml && test -f apps/desktop/src-tauri/Cargo.lock
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm verify
+
+  publish-windows:
+    needs: verify
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: pnpm install --frozen-lockfile
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: pnpm desktop:build
+          tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: Orivue ${{ github.event.inputs.tag || github.ref_name }}
+          releaseBody: Artefactos Windows sin firma de una versión preliminar. Consulta CHANGELOG.md y verifica el origen antes de instalar.
+          releaseDraft: true
+          prerelease: true
