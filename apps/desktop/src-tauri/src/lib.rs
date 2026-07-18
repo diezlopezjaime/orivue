@@ -85,10 +85,8 @@ fn start_service(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                         continue;
                     }
 
-                    if let Ok(mut connection) = app_handle
-                        .state::<ServiceState>()
-                        .connection
-                        .write()
+                    if let Ok(mut connection) =
+                        app_handle.state::<ServiceState>().connection.write()
                     {
                         connection.replace(ServiceConnection {
                             base_url: format!("http://127.0.0.1:{}", ready.port),
@@ -98,10 +96,8 @@ fn start_service(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                     let _ = app_handle.emit("orivue-service-status", "ready");
                 }
                 CommandEvent::Terminated(_) => {
-                    if let Ok(mut connection) = app_handle
-                        .state::<ServiceState>()
-                        .connection
-                        .write()
+                    if let Ok(mut connection) =
+                        app_handle.state::<ServiceState>().connection.write()
                     {
                         connection.take();
                     }
