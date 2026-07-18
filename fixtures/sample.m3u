@@ -1,0 +1,12 @@
+#EXTM3U url-tvg="http://127.0.0.1:9867/sample.xml"
+#EXTINF:-1 tvg-id="orivue.news" tvg-name="Orivue News" tvg-logo="http://127.0.0.1:9867/media/news.svg" group-title="Demo",Orivue News
+http://127.0.0.1:9867/media/test-pattern.m3u8
+#EXTINF:-1 tvg-id="orivue.culture" tvg-name="Orivue Culture" tvg-logo="http://127.0.0.1:9867/media/broken.svg" group-title="Demo",Orivue Culture
+http://127.0.0.1:9867/media/missing.m3u8
+#EXTINF:-1 tvg-id="orivue.duplicate" group-title="Edge cases",Duplicated channel
+https://example.invalid/duplicate.m3u8
+#EXTINF:-1 tvg-id="orivue.duplicate" group-title="Edge cases",Duplicated channel
+https://example.invalid/duplicate.m3u8
+#EXTINF:-1 tvg-name="Canal sin identificador" group-title="Internacional",Canal sin identificador
+https://example.invalid/sin-id.m3u8|User-Agent=Orivue%20Fixture
+#EXTINF:-1 tvg-id="incomplete" group-title="Edge cases",Missing URL

@@ -1,0 +1,6 @@
+pnpm-lock.yaml
+dist
+coverage
+playwright-report
+apps/desktop/src-tauri/target
+fixtures/media/*.ts
