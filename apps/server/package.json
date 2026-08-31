@@ -16,7 +16,7 @@
     "@orivue/m3u-parser": "workspace:*",
     "@orivue/stream-resolvers": "workspace:*",
     "@orivue/xmltv-parser": "workspace:*",
-    "fastify": "^5.4.0",
+    "fastify": "^5.12.1",
     "fastify-plugin": "^5.0.1",
     "pino": "^9.7.0",
     "zod": "^3.25.76"
