@@ -1,5 +1,6 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
+import { formatTime, useT } from '../i18n';
 import type { Channel } from '../types';
 import { Icon } from './Icon';
 import { Logo } from './Logo';
@@ -15,11 +16,17 @@ export function ChannelList({
   channels,
   onPlay,
   onFavorite,
+  onOptions,
+  highlightIndex,
 }: {
   channels: Channel[];
   onPlay: (channel: Channel) => void;
   onFavorite: (channel: Channel) => void;
+  onOptions?: ((channel: Channel) => void) | undefined;
+  /** Row to scroll into view (numeric zapping). */
+  highlightIndex?: number | undefined;
 }) {
+  const t = useT();
   const parentRef = useRef<HTMLDivElement>(null);
   const rowHeight = typeof window !== 'undefined' && window.innerWidth >= 2560 ? 106 : 82;
   const virtualizer = useVirtualizer({
@@ -29,6 +36,10 @@ export function ChannelList({
     initialRect: { width: 900, height: 640 },
     overscan: 8,
   });
+  useEffect(() => {
+    if (highlightIndex !== undefined && highlightIndex >= 0 && highlightIndex < channels.length)
+      virtualizer.scrollToIndex(highlightIndex, { align: 'center' });
+  }, [channels.length, highlightIndex, virtualizer]);
   const virtualRows = virtualizer.getVirtualItems();
   const rows = virtualRows.length
     ? virtualRows
@@ -38,19 +49,24 @@ export function ChannelList({
   if (!channels.length)
     return (
       <div className="empty-state">
-        <span>Sin canales</span>
-        <p>Importa una lista o prueba otro filtro.</p>
+        <span>{t('browse.noChannels')}</span>
+        <p>{t('browse.noChannelsHint')}</p>
       </div>
     );
   return (
-    <div className="channel-scroll" ref={parentRef} role="list" aria-label="Canales">
+    <div
+      className="channel-scroll"
+      ref={parentRef}
+      role="list"
+      aria-label={t('browse.channelsLabel')}
+    >
       <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
         {rows.map((row) => {
           const channel = channels[row.index];
           if (!channel) return null;
           return (
             <div
-              className="channel-row"
+              className={`channel-row ${row.index === highlightIndex ? 'highlight' : ''}`}
               role="listitem"
               key={channel.id}
               style={{ transform: `translateY(${row.start}px)`, height: row.size }}
@@ -59,7 +75,7 @@ export function ChannelList({
                 data-tv-focus
                 className="channel-main"
                 onClick={() => onPlay(channel)}
-                aria-label={`Reproducir ${channel.name}`}
+                aria-label={t('channel.play', { name: channel.name })}
               >
                 <span className="channel-number">
                   {channel.number ?? String(row.index + 1).padStart(2, '0')}
@@ -67,7 +83,7 @@ export function ChannelList({
                 <Logo src={channel.logoUrl} name={channel.name} />
                 <span className="channel-copy">
                   <strong>{channel.name}</strong>
-                  <small>{channel.now?.title ?? 'Sin información de programación'}</small>
+                  <small>{channel.now?.title ?? t('channel.noProgram')}</small>
                   {channel.now && (
                     <span className="program-progress">
                       <i style={{ width: `${progress(channel)}%` }} />
@@ -86,23 +102,27 @@ export function ChannelList({
                 className={`favorite-button ${channel.favorite ? 'active' : ''}`}
                 aria-label={
                   channel.favorite
-                    ? `Quitar ${channel.name} de favoritos`
-                    : `Añadir ${channel.name} a favoritos`
+                    ? t('channel.removeFavorite', { name: channel.name })
+                    : t('channel.addFavorite', { name: channel.name })
                 }
                 onClick={() => onFavorite(channel)}
               >
                 <Icon name="heart" />
               </button>
+              {onOptions && (
+                <button
+                  data-tv-focus
+                  className="options-button"
+                  aria-label={t('channel.options', { name: channel.name })}
+                  onClick={() => onOptions(channel)}
+                >
+                  <Icon name="more" />
+                </button>
+              )}
             </div>
           );
         })}
       </div>
     </div>
-  );
-}
-
-export function formatTime(input: string): string {
-  return new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit' }).format(
-    new Date(input),
   );
 }
