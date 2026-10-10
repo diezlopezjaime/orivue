@@ -50,16 +50,30 @@ red debe conectar al resultado validado o verificar la dirección efectiva.
 - URLs completas no se muestran en listados ni errores;
 - SQLite bajo el directorio de datos con permisos del usuario.
 
-Limitación: en `0.1.x` las URLs necesarias para actualizar pueden quedar en
-SQLite sin cifrado de almacén nativo. No compartas esa base ni backups.
+Limitación: las fuentes, incluidas las credenciales Xtream, se guardan en el
+almacén clave-valor de la app sin cifrado adicional. No compartas el directorio
+de datos ni sus copias.
 
-### Tauri y sidecar
+### Tauri, proxy loopback y plataformas
 
-- CSP restrictiva y capacidades mínimas;
-- ninguna API shell se expone al frontend;
-- nombre/ruta del sidecar fijados en la configuración, sin comandos arbitrarios;
-- token y directorio se pasan por entorno, no por argumentos visibles;
-- Tauri mantiene el handle y mata el hijo al cerrar;
+- CSP restrictiva y capacidades mínimas; ninguna API shell ni de sistema de
+  archivos se expone al frontend, solo los comandos propios y el plugin nativo;
+- el proxy escucha en `127.0.0.1` con puerto aleatorio y token de 256 bits por
+  ejecución; el token viaja en la ruta porque `<video>` no puede añadir
+  cabeceras, y solo la app lo conoce;
+- cada sesión nace de un canal importado y mantiene una lista de orígenes
+  permitidos: el del canal, los de sus redirecciones y los referenciados por el
+  manifiesto HLS; cualquier otra URL recibe 403;
+- CORS del proxy solo responde a los orígenes de la webview de Tauri y de los
+  servidores de desarrollo; nunca `*`;
+- destinos loopback, privados, link-local y multicast se bloquean; Ace Stream
+  solo habilita loopback y la opción de red local es explícita del usuario. La
+  comprobación DNS es previa a la conexión, así que el rebinding posterior no
+  queda cubierto;
+- el reproductor nativo de Android recibe la URL del canal directamente, sin
+  pasar por el proxy; la fuente la eligió el usuario;
+- Android permite tráfico en claro y iOS lleva excepciones ATS porque las
+  fuentes IPTV suelen ser HTTP; ambas decisiones están documentadas;
 - instaladores sin firma se identifican claramente, nunca se oculta la alerta.
 
 ## Abuso no soportado
@@ -77,12 +91,12 @@ compartirlo; la sanitización automática reduce riesgo pero no es infalible.
 
 ## Checklist de revisión
 
-- [ ] El servicio solo escucha en loopback.
-- [ ] Origen y token se prueban con casos negativos.
-- [ ] No existe endpoint proxy de URL libre.
+- [ ] El proxy solo escucha en loopback y exige token.
+- [ ] Origen y token se prueban con casos negativos (`crates/stream-proxy/tests`).
+- [ ] No existe endpoint proxy de URL libre: toda URL pertenece a una sesión.
 - [ ] DNS y todos los redirects se revalidan.
 - [ ] Logs/tests no contienen secretos reconocibles.
 - [ ] XML externo/DTD está deshabilitado y los límites tienen tests.
 - [ ] Cambiar/cerrar canal cancela red y resolutor.
-- [ ] El sidecar termina con la ventana y ante fallo de inicio.
+- [ ] Cerrar la app apaga el proxy y cancela las sesiones.
 - [ ] `pnpm audit` y CodeQL se han revisado, no solo ejecutado.

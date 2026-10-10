@@ -1,72 +1,68 @@
-# API local
+# API del engine
 
-Documento de orientación para `0.1.x`. El contrato efectivo tipado del código
-prevalece y puede cambiar antes de 1.0.
+Desde 0.2 no hay API HTTP local. La UI usa `@orivue/engine` en proceso. Los
+tipos exactos están en `packages/engine/src/types.ts` y prevalecen sobre este
+resumen.
 
-## Transporte y autenticación
+## Plataforma
 
-- Base: `http://127.0.0.1:<puerto>/api`.
-- El puerto puede ser dinámico en escritorio.
-- Las rutas exigen el token local establecido al arrancar el servicio.
-- Solo se admiten orígenes de la web/ventana de Orivue; no se usa CORS `*`.
-- Respuestas de error nunca incluyen URLs completas ni cabeceras sensibles.
-- IDs son opacos. Fechas se expresan como ISO 8601 UTC salvo zona explícita.
+El engine recibe un `EnginePlatform`:
 
-Cabecera actual de `0.1.x`:
+| Miembro                    | Navegador                      | Tauri                                              |
+| -------------------------- | ------------------------------ | -------------------------------------------------- |
+| `fetchText(url, opciones)` | `fetch` (CORS) o relay de Vite | comando `fetch_source` (Rust, límites y anti-SSRF) |
+| `kv.get/set/delete`        | `localStorage`                 | comandos `kv_*` (archivos JSON en datos de la app) |
 
-```http
-X-Orivue-Token: <token-local-efímero>
-Content-Type: application/json
-```
+## Fuentes
 
-## Recursos
+| Método                                 | Función                                                 |
+| -------------------------------------- | ------------------------------------------------------- |
+| `listSources()` / `getSource(id)`      | Fuentes con URL y contraseña redactadas                 |
+| `addSource({kind:'m3u'                 | 'xtream'                                                | 'file'})` | Crear; una URL `get.php` se convierte en fuente Xtream |
+| `updateSource(id, patch)`              | Nombre, URL, guía, refresco, formato Xtream             |
+| `removeSource(id)`                     | Borra canales, programas y contenido asociados          |
+| `refreshSource(id)`                    | Descarga, parsea y sustituye la revisión; luego la guía |
+| `refreshEpg(id)`                       | Solo la guía                                            |
+| `validateXtream(host, usuario, clave)` | Consulta `player_api.php` sin crear la fuente           |
+| `refreshDue()` / `startAutoRefresh()`  | Refresco automático por intervalo                       |
 
-| Método y ruta                            | Función                                   |
-| ---------------------------------------- | ----------------------------------------- |
-| `GET /api/health`                        | Estado mínimo, autenticado y sin secretos |
-| `GET /api/playlists`                     | Listar fuentes con URL redactada          |
-| `POST /api/playlists`                    | Crear fuente M3U autorizada               |
-| `PATCH /api/playlists/:id`               | Renombrar/configurar                      |
-| `DELETE /api/playlists/:id`              | Eliminar fuente y datos relacionados      |
-| `POST /api/playlists/:id/refresh`        | Actualización transaccional manual        |
-| `GET /api/groups`                        | Grupos visibles/ocultos                   |
-| `GET /api/channels`                      | Canales paginados, filtrados u ordenados  |
-| `GET /api/channels/:id`                  | Detalle sin exponer credenciales          |
-| `PATCH /api/channels/:id`                | Ocultación/nombre/orden personalizados    |
-| `GET /api/favorites`                     | Favoritos                                 |
-| `POST /api/favorites/:channelId`         | Marcar favorito (idempotente)             |
-| `DELETE /api/favorites/:channelId`       | Desmarcar favorito                        |
-| `GET /api/recents`                       | Reproducciones recientes                  |
-| `GET /api/epg/now`                       | Programa actual/siguiente                 |
-| `GET /api/epg/timeline`                  | Ventana temporal acotada                  |
-| `POST /api/playback/sessions`            | Resolver un `channelId` persistido        |
-| `DELETE /api/playback/sessions/:id`      | Cancelar y limpiar sesión                 |
-| `GET /api/integrations/acestream/status` | Estado del motor configurado              |
+## Biblioteca y consultas
 
-La creación de sesión acepta un `channelId`, no una URL remota arbitraria. El
-proxy usa una capacidad/sesión opaca de vida corta y revalida redirecciones.
+| Método                                                                                       | Función                                                           |
+| -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `listGroups(sourceId?)`                                                                      | Categorías con recuento y estado oculto                           |
+| `listChannels(query)`                                                                        | Filtro por fuente, grupo, texto, favoritos, recientes, paginación |
+| `getChannel(id)`                                                                             | Canal con número, favorito, oculto, tipo de stream                |
+| `setFavorite`, `markRecent`, `setChannelHidden`, `setGroupHidden`, `renameChannel`, `mapEpg` | Personalización                                                   |
 
-## Errores y paginación
+## Guía
 
-Formato recomendado:
+| Método                               | Función                                     |
+| ------------------------------------ | ------------------------------------------- |
+| `epgNow(channelIds)`                 | Programa actual y siguiente con caché corta |
+| `timeline(desde, hasta, channelIds)` | Programas que solapan la ventana            |
+| `listEpgChannels(sourceId)`          | Canales XMLTV para asociación manual        |
 
-```json
-{
-  "error": {
-    "code": "PLAYBACK_SOURCE_UNAVAILABLE",
-    "message": "No se pudo conectar con el origen",
-    "requestId": "req_..."
-  }
-}
-```
+## Reproducción
 
-`message` es apto para usuario y está redactado; detalles técnicos sanitizados
-se vinculan por `requestId`. Colecciones grandes usan cursor/límite. La API
-rechaza límites excesivos y ventanas EPG sin acotar.
+`getPlayable(channelId)` devuelve `{ url, kind, headers, allowLoopback }` y
+marca el canal como reciente. `kind` es `hls`, `mpegts`, `http`, `acestream` o
+`unknown`; el proxy lo afina con el `Content-Type` real.
 
-## Eventos de reproducción
+## Comandos Tauri
 
-Las sesiones representan `connecting`, `buffering`, `playing`, `retrying`,
-`failed` o `stopped`. Cerrar una sesión es idempotente. SSE u otro transporte de
-eventos debe mantener token, origen y cancelación; no se expone un stream de
-eventos global sin ámbito de sesión.
+| Comando                           | Función                                                      |
+| --------------------------------- | ------------------------------------------------------------ |
+| `proxy_info`                      | Base URL y token del proxy loopback                          |
+| `device_info`                     | Plataforma, versión, móvil, depuración                       |
+| `fetch_source`                    | Descarga acotada de texto (listas, guías, JSON)              |
+| `open_playback`                   | Abre sesión de proxy; devuelve URL loopback y `Content-Type` |
+| `close_playback`                  | Cierra la sesión y cancela descargas                         |
+| `kv_get` / `kv_set` / `kv_delete` | Almacén clave-valor durable                                  |
+| `plugin:orivue-native             | *`                                                           | Reproductor nativo, botón atrás e info de dispositivo (móvil) |
+
+## Errores
+
+Los mensajes de error pasan por `safeError`: se redactan `username`, `password`,
+`token`, cabeceras `Authorization` y las rutas Xtream `/live/usuario/clave/`.
+Los listados nunca contienen la contraseña de una cuenta Xtream.

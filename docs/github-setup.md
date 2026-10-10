@@ -26,8 +26,9 @@ tokens en archivos ni workflows.
 ## Etiquetas sugeridas
 
 `bug`, `enhancement`, `triage`, `security`, `dependencies`, `documentation`,
-`tests`, `good first issue`, `help wanted`, `area: web`, `area: server`,
-`area: parser`, `area: desktop`, `javascript`, `rust`, `ci`.
+`tests`, `good first issue`, `help wanted`, `area: web`, `area: engine`,
+`area: parser`, `area: desktop`, `area: android`, `area: ios`, `javascript`,
+`rust`, `kotlin`, `ci`.
 
 No uses una etiqueta pública para una vulnerabilidad no corregida. El issue
 template impide informes en blanco y deriva la seguridad a `SECURITY.md`.
