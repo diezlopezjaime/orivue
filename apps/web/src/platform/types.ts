@@ -2,6 +2,8 @@ import type { EnginePlatform, PlayableStream, StreamKind } from '@orivue/engine'
 
 export interface StreamHandle {
   readonly id: string;
+  readonly title: string;
+  readonly live: boolean;
   /** URL the web player loads (loopback proxy under Tauri, direct URL in the browser). */
   readonly url: string;
   /** Upstream URL for native players that fetch on their own. */
@@ -39,6 +41,7 @@ export type NativePlayerEvent =
       state: 'buffering' | 'playing' | 'paused' | 'ended' | 'error';
       message?: string;
     }
+  | { type: 'position'; position: number; duration: number }
   | { type: 'tracks'; audio: NativeTrack[]; text: NativeTrack[] };
 
 export interface NativePlayerApi {
@@ -47,8 +50,10 @@ export interface NativePlayerApi {
     headers: Readonly<Record<string, string>>;
     kind: StreamKind;
     title: string;
+    live: boolean;
   }): Promise<void>;
   stop(): Promise<void>;
+  seek(positionSeconds: number): Promise<void>;
   setPaused(paused: boolean): Promise<void>;
   setVolume(volume: number, muted: boolean): Promise<void>;
   setAspect(mode: 'contain' | 'cover' | 'fill'): Promise<void>;

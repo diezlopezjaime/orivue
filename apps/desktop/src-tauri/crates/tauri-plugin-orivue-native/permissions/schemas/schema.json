@@ -367,6 +367,18 @@
           "markdownDescription": "Denies the remove_listener command without any pre-configured scope."
         },
         {
+          "description": "Enables the seek command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-seek",
+          "markdownDescription": "Enables the seek command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the seek command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-seek",
+          "markdownDescription": "Denies the seek command without any pre-configured scope."
+        },
+        {
           "description": "Enables the select_track command without any pre-configured scope.",
           "type": "string",
           "const": "allow-select-track",
@@ -439,10 +451,10 @@
           "markdownDescription": "Denies the stop command without any pre-configured scope."
         },
         {
-          "description": "Reproductor nativo, botón atrás e información del dispositivo\n#### This default permission set includes:\n\n- `allow-load`\n- `allow-stop`\n- `allow-set-paused`\n- `allow-set-volume`\n- `allow-set-aspect`\n- `allow-select-track`\n- `allow-get-tracks`\n- `allow-set-back-handling`\n- `allow-get-device-info`\n- `allow-exit-app`\n- `allow-register-listener`\n- `allow-remove-listener`",
+          "description": "Reproductor nativo, botón atrás e información del dispositivo\n#### This default permission set includes:\n\n- `allow-load`\n- `allow-stop`\n- `allow-set-paused`\n- `allow-set-volume`\n- `allow-set-aspect`\n- `allow-seek`\n- `allow-select-track`\n- `allow-get-tracks`\n- `allow-set-back-handling`\n- `allow-get-device-info`\n- `allow-exit-app`\n- `allow-register-listener`\n- `allow-remove-listener`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Reproductor nativo, botón atrás e información del dispositivo\n#### This default permission set includes:\n\n- `allow-load`\n- `allow-stop`\n- `allow-set-paused`\n- `allow-set-volume`\n- `allow-set-aspect`\n- `allow-select-track`\n- `allow-get-tracks`\n- `allow-set-back-handling`\n- `allow-get-device-info`\n- `allow-exit-app`\n- `allow-register-listener`\n- `allow-remove-listener`"
+          "markdownDescription": "Reproductor nativo, botón atrás e información del dispositivo\n#### This default permission set includes:\n\n- `allow-load`\n- `allow-stop`\n- `allow-set-paused`\n- `allow-set-volume`\n- `allow-set-aspect`\n- `allow-seek`\n- `allow-select-track`\n- `allow-get-tracks`\n- `allow-set-back-handling`\n- `allow-get-device-info`\n- `allow-exit-app`\n- `allow-register-listener`\n- `allow-remove-listener`"
         }
       ]
     }

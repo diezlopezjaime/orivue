@@ -1,4 +1,4 @@
-import type { XtreamAccountInfo, XtreamOutput } from '@orivue/xtream';
+import type { XtreamAccountInfo, XtreamEpisode, XtreamOutput } from '@orivue/xtream';
 
 export type SourceKind = 'm3u' | 'xtream' | 'file';
 export type SourceStatus = 'pending' | 'ready' | 'error';
@@ -27,6 +27,8 @@ export interface Source {
   readonly epgError: string | null;
   readonly channelCount: number;
   readonly programCount: number;
+  readonly movieCount: number;
+  readonly seriesCount: number;
   readonly account: XtreamAccountInfo | null;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -130,6 +132,8 @@ export interface ChannelQuery {
   favorite?: boolean | undefined;
   recent?: boolean | undefined;
   includeHidden?: boolean | undefined;
+  /** Only channels hidden individually or through their group. */
+  hiddenOnly?: boolean | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
 }
@@ -142,7 +146,10 @@ export interface ChannelPage {
 export type StreamKind = 'hls' | 'mpegts' | 'http' | 'acestream' | 'unknown';
 
 export interface PlayableStream {
-  readonly channel: Channel;
+  readonly channel?: Channel;
+  readonly title: string;
+  /** Live streams get latency chasing; on-demand ones expose seeking. */
+  readonly live: boolean;
   /** Upstream URL, possibly containing credentials. Only handed to the platform layer. */
   readonly url: string;
   readonly kind: StreamKind;
@@ -167,8 +174,53 @@ export interface EngineSettings {
   maxEpgBytes: number;
 }
 
+export type VodKind = 'movie' | 'series';
+
+export interface VodCategory {
+  readonly id: string;
+  readonly sourceId: string;
+  readonly kind: VodKind;
+  readonly name: string;
+  readonly count: number;
+}
+
+export interface VodItem {
+  readonly id: string;
+  readonly sourceId: string;
+  readonly kind: VodKind;
+  readonly remoteId: string;
+  readonly name: string;
+  readonly categoryId: string | null;
+  readonly categoryName: string | null;
+  readonly poster: string | null;
+  readonly rating: number | null;
+  readonly year: string | null;
+  readonly plot: string | null;
+  readonly containerExtension: string | null;
+  readonly addedAt: string | null;
+}
+
+export type Episode = XtreamEpisode;
+
+export interface SeriesInfo {
+  readonly id: string;
+  readonly plot: string | null;
+  readonly seasons: ReadonlyArray<{ readonly season: number; readonly episodes: Episode[] }>;
+  readonly fetchedAt: string;
+}
+
+export interface VodQuery {
+  kind: VodKind;
+  sourceId?: string | undefined;
+  categoryId?: string | undefined;
+  search?: string | undefined;
+  limit?: number | undefined;
+  offset?: number | undefined;
+}
+
 export type EngineEvent =
   | { type: 'sources' }
+  | { type: 'vod'; sourceId: string }
   | { type: 'channels'; sourceId: string }
   | { type: 'epg'; sourceId: string }
   | { type: 'library' }
@@ -179,5 +231,7 @@ export type EngineListener = (event: EngineEvent) => void;
 export interface RefreshResult {
   readonly channelCount: number;
   readonly programCount: number;
+  readonly movieCount: number;
+  readonly seriesCount: number;
   readonly warnings: string[];
 }

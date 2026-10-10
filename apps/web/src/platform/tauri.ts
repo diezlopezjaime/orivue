@@ -76,6 +76,7 @@ function createNativeApi(): NativePlayerApi {
   return {
     load: (request) => call<void>('load', request),
     stop: () => call<void>('stop'),
+    seek: (positionSeconds) => call<void>('seek', { positionSeconds }),
     setPaused: (paused) => call<void>('set_paused', { paused }),
     setVolume: (volume, muted) => call<void>('set_volume', { volume, muted }),
     setAspect: (mode) => call<void>('set_aspect', { mode }),
@@ -92,6 +93,12 @@ function createNativeApi(): NativePlayerApi {
             ...(payload.message ? { message: payload.message } : {}),
           }),
       );
+      const unlistenPosition = await addPluginListener<{ position: number; duration: number }>(
+        'orivue-native',
+        'position',
+        (payload) =>
+          listener({ type: 'position', position: payload.position, duration: payload.duration }),
+      );
       const unlistenTracks = await addPluginListener<{ audio: NativeTrack[]; text: NativeTrack[] }>(
         'orivue-native',
         'tracks',
@@ -99,6 +106,7 @@ function createNativeApi(): NativePlayerApi {
       );
       return () => {
         void unlistenState.unregister();
+        void unlistenPosition.unregister();
         void unlistenTracks.unregister();
       };
     },
@@ -148,6 +156,8 @@ export async function createTauriPlatform(): Promise<AppPlatform> {
         return {
           id: session.id,
           url: session.url,
+          title: playable.title,
+          live: playable.live,
           upstreamUrl: playable.url,
           kind: refineStreamKind(
             playable.kind === 'acestream' ? 'unknown' : playable.kind,

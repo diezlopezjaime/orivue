@@ -52,7 +52,9 @@ function fakePlatform(responses: Record<string, string | (() => string)>) {
     kv: memoryKeyValueStore(),
     fetchText: (url) => {
       requests.push(url);
-      const match = Object.entries(responses).find(([prefix]) => url.startsWith(prefix));
+      const match = Object.entries(responses)
+        .sort((a, b) => b[0].length - a[0].length)
+        .find(([prefix]) => url.startsWith(prefix));
       if (!match) return Promise.reject(new Error(`HTTP 404 for ${url}`));
       const body = match[1];
       return Promise.resolve(typeof body === 'function' ? body() : body);
@@ -137,11 +139,12 @@ describe('OrivueEngine sources', () => {
     expect(JSON.stringify(source)).not.toContain('s3cret');
     const result = await engine.refreshSource(source.id);
     expect(result.channelCount).toBe(2);
-    expect(requests).toEqual([
+    expect(requests.filter((url) => !url.includes('action='))).toEqual([
       `${PANEL}/player_api.php?username=alice&password=s3cret`,
       `${PANEL}/get.php?username=alice&password=s3cret&type=m3u_plus&output=ts`,
       `${PANEL}/xmltv.php?username=alice&password=s3cret`,
     ]);
+    expect(requests.filter((url) => url.includes('action='))).toHaveLength(4);
     expect(engine.getSource(source.id)?.account?.maxConnections).toBe(1);
     const channel = engine.listChannels().items[0]!;
     expect(channel.streamKind).toBe('mpegts');
@@ -343,5 +346,115 @@ describe('redaction', () => {
     expect(safeText(`Failed ${PANEL}/live/alice/s3cret/1 and ?password=x&user=y`)).toBe(
       `Failed ${PANEL}/live/[redacted]/[redacted]/1 and ?password=[redacted]&user=[redacted]`,
     );
+  });
+});
+
+describe('Xtream VOD catalogue', () => {
+  const MOVIES = JSON.stringify([
+    {
+      stream_id: 1,
+      name: 'Película A',
+      category_id: '10',
+      container_extension: 'mkv',
+      stream_icon: 'http://img/a.jpg',
+    },
+    { stream_id: 2, name: 'Película B', category_id: '11' },
+  ]);
+  const SERIES = JSON.stringify([
+    { series_id: 7, name: 'Serie X', category_id: '20', cover: 'http://img/x.jpg' },
+  ]);
+  const SERIES_INFO = JSON.stringify({
+    info: { plot: 'Trama' },
+    episodes: { '1': [{ id: '701', episode_num: 1, title: 'Piloto', container_extension: 'mp4' }] },
+  });
+  const XTREAM_WITH_VOD = `${XTREAM_PLAYLIST}#EXTINF:-1 tvg-id="" group-title="VOD",Película A
+${PANEL}/movie/alice/s3cret/1.mkv
+`;
+
+  async function createXtreamEngine() {
+    const fixture = await createEngine({
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_vod_categories`]:
+        JSON.stringify([
+          { category_id: '10', category_name: 'Acción' },
+          { category_id: '11', category_name: 'Drama' },
+        ]),
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_series_categories`]:
+        JSON.stringify([{ category_id: '20', category_name: 'Comedia' }]),
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_vod_streams`]: MOVIES,
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_series`]: SERIES,
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_series_info`]:
+        SERIES_INFO,
+      [`${PANEL}/player_api.php`]: JSON.stringify(ACCOUNT),
+      [`${PANEL}/get.php`]: XTREAM_WITH_VOD,
+      [`${PANEL}/xmltv.php`]: EPG,
+    });
+    const source = await fixture.engine.addSource({
+      kind: 'xtream',
+      name: 'Panel',
+      host: PANEL,
+      username: 'alice',
+      password: 's3cret',
+    });
+    const result = await fixture.engine.refreshSource(source.id);
+    return { ...fixture, source, result };
+  }
+
+  it('imports movies and series and removes them from the live list', async () => {
+    const { engine, source, result } = await createXtreamEngine();
+    expect(result).toMatchObject({ channelCount: 2, movieCount: 2, seriesCount: 1 });
+    expect(engine.listChannels().items.map((c) => c.name)).toEqual([
+      'Noticias 24',
+      'Deporte Total',
+    ]);
+    expect(engine.getSource(source.id)).toMatchObject({ movieCount: 2, seriesCount: 1 });
+    expect(engine.listVodCategories('movie').map((c) => [c.name, c.count])).toEqual([
+      ['Acción', 1],
+      ['Drama', 1],
+    ]);
+    const drama = engine.listVodCategories('movie')[1]!;
+    expect(engine.listVod({ kind: 'movie', categoryId: drama.id }).items[0]?.name).toBe(
+      'Película B',
+    );
+    expect(engine.listVod({ kind: 'series', search: 'serie' }).total).toBe(1);
+  });
+
+  it('plays movies and episodes with on-demand streams', async () => {
+    const { engine } = await createXtreamEngine();
+    const movie = engine.listVod({ kind: 'movie' }).items[0]!;
+    const playable = await engine.getPlayableVod(movie.id);
+    expect(playable).toMatchObject({
+      live: false,
+      kind: 'http',
+      url: `${PANEL}/movie/alice/s3cret/1.mkv`,
+    });
+    const series = engine.listVod({ kind: 'series' }).items[0]!;
+    const info = await engine.getSeriesInfo(series.id);
+    expect(info.plot).toBe('Trama');
+    expect(info.seasons[0]?.episodes[0]?.title).toBe('Piloto');
+    const episode = await engine.getPlayableVod(series.id, '701');
+    expect(episode.url).toBe(`${PANEL}/series/alice/s3cret/701.mp4`);
+    expect(episode.title).toContain('1x01');
+    await expect(engine.getPlayableVod(series.id)).rejects.toThrow(/episode/);
+  });
+
+  it('keeps the M3U VOD entries when the catalogue cannot be fetched', async () => {
+    const { engine } = await createEngine({
+      [`${PANEL}/player_api.php`]: JSON.stringify(ACCOUNT),
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=`]: () => {
+        throw new Error('HTTP 500');
+      },
+      [`${PANEL}/get.php`]: XTREAM_WITH_VOD,
+    });
+    const source = await engine.addSource({
+      kind: 'xtream',
+      name: 'P',
+      host: PANEL,
+      username: 'alice',
+      password: 's3cret',
+    });
+    const result = await engine.refreshSource(source.id);
+    expect(result.channelCount).toBe(3);
+    expect(result.warnings.some((warning) => warning.startsWith('VOD:'))).toBe(true);
+    expect(engine.listVod({ kind: 'movie' }).total).toBe(0);
   });
 });

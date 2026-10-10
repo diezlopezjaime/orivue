@@ -52,8 +52,7 @@ describe('PlayerOverlay', () => {
     const onChange = vi.fn();
     render(
       <PlayerOverlay
-        channel={channels[1]!}
-        channels={channels}
+        target={{ kind: 'channel', channel: channels[1]!, channels }}
         onClose={onClose}
         onChange={onChange}
       />,
@@ -71,8 +70,7 @@ describe('PlayerOverlay', () => {
   it('uses the native video element for progressive streams', async () => {
     render(
       <PlayerOverlay
-        channel={channels[2]!}
-        channels={channels}
+        target={{ kind: 'channel', channel: channels[2]!, channels }}
         onClose={vi.fn()}
         onChange={vi.fn()}
       />,

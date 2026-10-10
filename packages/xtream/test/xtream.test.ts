@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   buildApiUrl,
   buildEpgUrl,
+  buildEpisodeUrl,
+  buildMovieUrl,
   buildPlaylistUrl,
+  buildSeriesInfoUrl,
+  isVodStreamUrl,
+  parseCategories,
+  parseMovies,
+  parseSeriesInfo,
+  parseSeriesList,
   createXtreamCredentials,
   fetchAccountInfo,
   parseAccountInfo,
@@ -122,5 +130,90 @@ describe('redactXtreamUrl', () => {
     const legacy = redactXtreamUrl(`${PANEL}/alice/s3cret/42`);
     expect(legacy).not.toContain('s3cret');
     expect(redactXtreamUrl('nope')).toBe('[invalid or redacted URL]');
+  });
+});
+
+describe('VOD catalogue', () => {
+  const credentials = createXtreamCredentials(PANEL, 'alice', 's3cret');
+
+  it('parses categories, movies and series lists tolerantly', () => {
+    expect(
+      parseCategories([
+        { category_id: 1, category_name: 'Acción' },
+        { category_id: '2', category_name: 'Drama' },
+        { category_id: '3' },
+      ]),
+    ).toEqual([
+      { id: '1', name: 'Acción' },
+      { id: '2', name: 'Drama' },
+    ]);
+    const movies = parseMovies([
+      {
+        stream_id: 10,
+        name: 'Película',
+        category_id: '1',
+        stream_icon: 'http://img/1.jpg',
+        rating: '7.5',
+        container_extension: 'mkv',
+        added: '1700000000',
+      },
+      { name: 'sin id' },
+    ]);
+    expect(movies).toEqual([
+      {
+        id: '10',
+        name: 'Película',
+        categoryId: '1',
+        poster: 'http://img/1.jpg',
+        rating: 7.5,
+        year: null,
+        containerExtension: 'mkv',
+        addedAt: new Date(1_700_000_000_000).toISOString(),
+      },
+    ]);
+    expect(
+      parseSeriesList([{ series_id: 5, name: 'Serie', cover: 'c.jpg', releaseDate: '2021-05-01' }]),
+    ).toEqual([
+      {
+        id: '5',
+        name: 'Serie',
+        categoryId: null,
+        poster: 'c.jpg',
+        rating: null,
+        year: '2021',
+        plot: null,
+      },
+    ]);
+  });
+
+  it('parses series info in object and array layouts', () => {
+    const object = parseSeriesInfo({
+      info: { plot: 'Trama' },
+      episodes: {
+        '2': [
+          {
+            id: '22',
+            episode_num: 2,
+            title: 'B',
+            container_extension: 'mp4',
+            info: { duration_secs: 1500 },
+          },
+        ],
+        '1': [{ id: '11', episode_num: '1', title: 'A' }],
+      },
+    });
+    expect(object.plot).toBe('Trama');
+    expect(object.seasons.map((season) => season.season)).toEqual([1, 2]);
+    expect(object.seasons[1]?.episodes[0]).toMatchObject({ id: '22', durationSeconds: 1500 });
+    const array = parseSeriesInfo({ episodes: [[{ id: '1' }], [{ id: '2', episode_num: 1 }]] });
+    expect(array.seasons.map((season) => season.episodes[0]?.id)).toEqual(['1', '2']);
+  });
+
+  it('builds VOD URLs and recognises them', () => {
+    expect(buildMovieUrl(credentials, '10', 'mkv')).toBe(`${PANEL}/movie/alice/s3cret/10.mkv`);
+    expect(buildEpisodeUrl(credentials, '22')).toBe(`${PANEL}/series/alice/s3cret/22.mp4`);
+    expect(buildSeriesInfoUrl(credentials, '5')).toContain('action=get_series_info&series_id=5');
+    expect(isVodStreamUrl(`${PANEL}/movie/alice/s3cret/10.mkv`)).toBe(true);
+    expect(isVodStreamUrl(`${PANEL}/live/alice/s3cret/10.ts`)).toBe(false);
   });
 });

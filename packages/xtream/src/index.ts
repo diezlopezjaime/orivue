@@ -232,3 +232,201 @@ export function redactXtreamUrl(input: string): string {
   }
   return url.toString();
 }
+
+// ----------------------------------------------------------------- VOD API
+
+export type VodKind = 'movie' | 'series';
+
+export interface XtreamCategory {
+  readonly id: string;
+  readonly name: string;
+}
+
+export interface XtreamMovie {
+  readonly id: string;
+  readonly name: string;
+  readonly categoryId: string | null;
+  readonly poster: string | null;
+  readonly rating: number | null;
+  readonly year: string | null;
+  readonly containerExtension: string;
+  readonly addedAt: string | null;
+}
+
+export interface XtreamSeries {
+  readonly id: string;
+  readonly name: string;
+  readonly categoryId: string | null;
+  readonly poster: string | null;
+  readonly rating: number | null;
+  readonly year: string | null;
+  readonly plot: string | null;
+}
+
+export interface XtreamEpisode {
+  readonly id: string;
+  readonly season: number;
+  readonly number: number;
+  readonly title: string;
+  readonly containerExtension: string;
+  readonly durationSeconds: number | null;
+  readonly plot: string | null;
+}
+
+export interface XtreamSeriesInfo {
+  readonly plot: string | null;
+  readonly seasons: ReadonlyArray<{ readonly season: number; readonly episodes: XtreamEpisode[] }>;
+}
+
+function idText(value: unknown): string | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  return null;
+}
+
+function cleanExtension(value: unknown, fallback: string): string {
+  const text = asText(value)?.replace(/^\./, '').toLowerCase();
+  return text && /^[a-z0-9]{2,5}$/.test(text) ? text : fallback;
+}
+
+function toDate(value: unknown): string | null {
+  const seconds = asNumber(value);
+  return seconds && seconds > 0 ? new Date(seconds * 1000).toISOString() : null;
+}
+
+export function parseCategories(payload: unknown): XtreamCategory[] {
+  if (!Array.isArray(payload)) return [];
+  const result: XtreamCategory[] = [];
+  for (const item of payload) {
+    const record = asRecord(item);
+    const id = idText(record.category_id);
+    const name = asText(record.category_name);
+    if (id && name) result.push({ id, name });
+  }
+  return result;
+}
+
+export function parseMovies(payload: unknown): XtreamMovie[] {
+  if (!Array.isArray(payload)) return [];
+  const result: XtreamMovie[] = [];
+  for (const item of payload) {
+    const record = asRecord(item);
+    const id = idText(record.stream_id);
+    const name = asText(record.name) ?? asText(record.title);
+    if (!id || !name) continue;
+    result.push({
+      id,
+      name,
+      categoryId: idText(record.category_id),
+      poster: asText(record.stream_icon) ?? asText(record.cover),
+      rating: asNumber(record.rating),
+      year: asText(record.year) ?? asText(record.release_date)?.slice(0, 4) ?? null,
+      containerExtension: cleanExtension(record.container_extension, 'mp4'),
+      addedAt: toDate(record.added),
+    });
+  }
+  return result;
+}
+
+export function parseSeriesList(payload: unknown): XtreamSeries[] {
+  if (!Array.isArray(payload)) return [];
+  const result: XtreamSeries[] = [];
+  for (const item of payload) {
+    const record = asRecord(item);
+    const id = idText(record.series_id);
+    const name = asText(record.name) ?? asText(record.title);
+    if (!id || !name) continue;
+    result.push({
+      id,
+      name,
+      categoryId: idText(record.category_id),
+      poster: asText(record.cover) ?? asText(record.stream_icon),
+      rating: asNumber(record.rating),
+      year: asText(record.year) ?? asText(record.releaseDate)?.slice(0, 4) ?? null,
+      plot: asText(record.plot),
+    });
+  }
+  return result;
+}
+
+function parseEpisodeList(value: unknown, season: number): XtreamEpisode[] {
+  if (!Array.isArray(value)) return [];
+  const result: XtreamEpisode[] = [];
+  for (const item of value) {
+    const record = asRecord(item);
+    const id = idText(record.id);
+    if (!id) continue;
+    const info = asRecord(record.info);
+    const number = asNumber(record.episode_num) ?? result.length + 1;
+    result.push({
+      id,
+      season,
+      number,
+      title: asText(record.title) ?? `Episode ${number}`,
+      containerExtension: cleanExtension(record.container_extension, 'mp4'),
+      durationSeconds: asNumber(info.duration_secs),
+      plot: asText(info.plot),
+    });
+  }
+  return result.sort((a, b) => a.number - b.number);
+}
+
+/** Normalises `player_api.php?action=get_series_info&series_id=` payloads. */
+export function parseSeriesInfo(payload: unknown): XtreamSeriesInfo {
+  const root = asRecord(payload);
+  const info = asRecord(root.info);
+  const episodes = root.episodes;
+  const seasons: Array<{ season: number; episodes: XtreamEpisode[] }> = [];
+  if (Array.isArray(episodes)) {
+    // Some panels return an array of seasons; each entry is a list of episodes.
+    episodes.forEach((list, index) => {
+      const parsed = parseEpisodeList(list, index + 1);
+      if (parsed.length) seasons.push({ season: index + 1, episodes: parsed });
+    });
+  } else if (episodes && typeof episodes === 'object') {
+    for (const [key, list] of Object.entries(episodes as Record<string, unknown>)) {
+      const season = Number(key);
+      if (!Number.isFinite(season)) continue;
+      const parsed = parseEpisodeList(list, season);
+      if (parsed.length) seasons.push({ season, episodes: parsed });
+    }
+  }
+  seasons.sort((a, b) => a.season - b.season);
+  return { plot: asText(info.plot), seasons };
+}
+
+function streamUrl(
+  credentials: XtreamCredentials,
+  kind: 'movie' | 'series',
+  id: string,
+  extension: string,
+): string {
+  return `${credentials.baseUrl}/${kind}/${encodeURIComponent(credentials.username)}/${encodeURIComponent(credentials.password)}/${encodeURIComponent(id)}.${extension}`;
+}
+
+export function buildMovieUrl(
+  credentials: XtreamCredentials,
+  streamId: string,
+  extension = 'mp4',
+): string {
+  return streamUrl(credentials, 'movie', streamId, extension);
+}
+
+export function buildEpisodeUrl(
+  credentials: XtreamCredentials,
+  episodeId: string,
+  extension = 'mp4',
+): string {
+  return streamUrl(credentials, 'series', episodeId, extension);
+}
+
+export function buildSeriesInfoUrl(credentials: XtreamCredentials, seriesId: string): string {
+  const url = new URL(buildApiUrl(credentials, 'get_series_info'));
+  url.searchParams.set('series_id', seriesId);
+  return url.toString();
+}
+
+/** Stream URLs that belong to the VOD catalogue rather than the live list. */
+export function isVodStreamUrl(url: string): boolean {
+  return /\/(?:movie|series)\/[^/]+\/[^/]+\/[^/]+$/i.test(url.split('?')[0] ?? url);
+}

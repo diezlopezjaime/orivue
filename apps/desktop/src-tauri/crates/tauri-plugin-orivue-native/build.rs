@@ -4,6 +4,7 @@ const COMMANDS: &[&str] = &[
     "set_paused",
     "set_volume",
     "set_aspect",
+    "seek",
     "select_track",
     "get_tracks",
     "set_back_handling",

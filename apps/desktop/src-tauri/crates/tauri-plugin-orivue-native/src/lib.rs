@@ -43,6 +43,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::set_paused,
             commands::set_volume,
             commands::set_aspect,
+            commands::seek,
             commands::select_track,
             commands::get_tracks,
             commands::set_back_handling,

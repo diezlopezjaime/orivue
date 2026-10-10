@@ -68,3 +68,8 @@ pub(crate) async fn get_device_info<R: Runtime>(app: AppHandle<R>) -> Result<Dev
 pub(crate) async fn exit_app<R: Runtime>(app: AppHandle<R>) -> Result<()> {
     app.orivue_native().exit_app()
 }
+
+#[command]
+pub(crate) async fn seek<R: Runtime>(app: AppHandle<R>, request: SeekRequest) -> Result<()> {
+    app.orivue_native().seek(request)
+}

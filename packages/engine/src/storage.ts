@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { Program, StoredChannel } from './types.js';
+import type { Program, SeriesInfo, StoredChannel, VodItem } from './types.js';
 
 interface ChannelRevision {
   sourceId: string;
@@ -23,6 +23,8 @@ interface OrivueSchema extends DBSchema {
     indexes: { byChannelStart: [string, string, string]; bySource: string };
   };
   sourceContent: { key: string; value: { sourceId: string; content: string } };
+  vod: { key: string; value: { sourceId: string; items: VodItem[] } };
+  seriesInfo: { key: string; value: SeriesInfo };
 }
 
 export interface EngineStorage {
@@ -33,6 +35,10 @@ export interface EngineStorage {
   readSourceContent(sourceId: string): Promise<string | undefined>;
   writeSourceContent(sourceId: string, content: string): Promise<void>;
   readEpgNames(sourceId: string): Promise<Record<string, string>>;
+  readAllVod(): Promise<Map<string, VodItem[]>>;
+  writeVod(sourceId: string, items: VodItem[]): Promise<void>;
+  readSeriesInfo(id: string): Promise<SeriesInfo | undefined>;
+  writeSeriesInfo(info: SeriesInfo): Promise<void>;
   replaceEpg(sourceId: string, names: Record<string, string>, programs: Program[]): Promise<void>;
   programsBetween(
     sourceId: string,
@@ -50,17 +56,23 @@ export interface EngineStorage {
   close(): void;
 }
 
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export async function openEngineStorage(name = 'orivue'): Promise<EngineStorage> {
   const db = await openDB<OrivueSchema>(name, DB_VERSION, {
-    upgrade(database) {
-      database.createObjectStore('channelRevisions', { keyPath: 'sourceId' });
-      database.createObjectStore('epgChannels', { keyPath: 'sourceId' });
-      const programs = database.createObjectStore('programs', { keyPath: 'id' });
-      programs.createIndex('byChannelStart', ['sourceId', 'epgKey', 'startAt']);
-      programs.createIndex('bySource', 'sourceId');
-      database.createObjectStore('sourceContent', { keyPath: 'sourceId' });
+    upgrade(database, oldVersion) {
+      if (oldVersion < 1) {
+        database.createObjectStore('channelRevisions', { keyPath: 'sourceId' });
+        database.createObjectStore('epgChannels', { keyPath: 'sourceId' });
+        const programs = database.createObjectStore('programs', { keyPath: 'id' });
+        programs.createIndex('byChannelStart', ['sourceId', 'epgKey', 'startAt']);
+        programs.createIndex('bySource', 'sourceId');
+        database.createObjectStore('sourceContent', { keyPath: 'sourceId' });
+      }
+      if (oldVersion < 2) {
+        database.createObjectStore('vod', { keyPath: 'sourceId' });
+        database.createObjectStore('seriesInfo', { keyPath: 'id' });
+      }
     },
   });
   return new IndexedDbStorage(db);
@@ -88,13 +100,21 @@ class IndexedDbStorage implements EngineStorage {
 
   async deleteSource(sourceId: string): Promise<void> {
     const tx = this.db.transaction(
-      ['channelRevisions', 'epgChannels', 'programs', 'sourceContent'],
+      ['channelRevisions', 'epgChannels', 'programs', 'sourceContent', 'vod', 'seriesInfo'],
       'readwrite',
     );
+    const series = tx.objectStore('seriesInfo');
+    let cursor = await series.openKeyCursor();
+    while (cursor) {
+      if (String(cursor.primaryKey).startsWith(`${sourceId}:`))
+        void series.delete(cursor.primaryKey);
+      cursor = await cursor.continue();
+    }
     await Promise.all([
       tx.objectStore('channelRevisions').delete(sourceId),
       tx.objectStore('epgChannels').delete(sourceId),
       tx.objectStore('sourceContent').delete(sourceId),
+      tx.objectStore('vod').delete(sourceId),
       deleteBySource(tx.objectStore('programs'), sourceId),
     ]);
     await tx.done;
@@ -106,6 +126,23 @@ class IndexedDbStorage implements EngineStorage {
 
   async writeSourceContent(sourceId: string, content: string): Promise<void> {
     await this.db.put('sourceContent', { sourceId, content });
+  }
+
+  async readAllVod(): Promise<Map<string, VodItem[]>> {
+    const rows = await this.db.getAll('vod');
+    return new Map(rows.map((row) => [row.sourceId, row.items]));
+  }
+
+  async writeVod(sourceId: string, items: VodItem[]): Promise<void> {
+    await this.db.put('vod', { sourceId, items });
+  }
+
+  async readSeriesInfo(id: string): Promise<SeriesInfo | undefined> {
+    return this.db.get('seriesInfo', id);
+  }
+
+  async writeSeriesInfo(info: SeriesInfo): Promise<void> {
+    await this.db.put('seriesInfo', info);
   }
 
   async readEpgNames(sourceId: string): Promise<Record<string, string>> {
