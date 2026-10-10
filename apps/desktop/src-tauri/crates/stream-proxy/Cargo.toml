@@ -1,0 +1,23 @@
+[package]
+name = "orivue-stream-proxy"
+version = "0.1.0"
+description = "Loopback, token-gated media proxy shared by every Orivue platform"
+license = "MIT"
+edition = "2021"
+rust-version = "1.84"
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query"] }
+bytes = "1"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+percent-encoding = "2"
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "gzip"] }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "time", "sync"] }
+tokio-util = { version = "0.7", default-features = false }
+url = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
