@@ -1,14 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { api } from '../api';
-import { formatTime } from '../components/ChannelList';
 import { Logo } from '../components/Logo';
+import { formatDate, formatTime, useT } from '../i18n';
 import { useAppStore } from '../store';
 import type { Program } from '../types';
 
 const HOUR = 3_600_000;
 
 export function GuidePage() {
+  const t = useT();
   const play = useAppStore((state) => state.play);
   const range = useMemo(() => {
     const from = new Date();
@@ -28,19 +29,18 @@ export function GuidePage() {
     <section className="page guide-page">
       <header className="page-header">
         <div>
-          <span className="eyebrow">PROGRAMACIÓN</span>
-          <h1>Guía</h1>
+          <span className="eyebrow">{t('guide.eyebrow')}</span>
+          <h1>{t('guide.title')}</h1>
         </div>
         <div className="date-chip">
-          Hoy ·{' '}
-          {new Intl.DateTimeFormat('es', { day: 'numeric', month: 'long' }).format(new Date())}
+          {t('guide.today')} · {formatDate(new Date(), { day: 'numeric', month: 'long' })}
         </div>
       </header>
       <div className="guide-shell">
         <div className="guide-hours">
-          <span>Canal</span>
+          <span>{t('guide.channel')}</span>
           {hours.map((hour) => (
-            <time key={hour.toISOString()}>{formatTime(hour.toISOString())}</time>
+            <time key={hour.toISOString()}>{formatTime(hour)}</time>
           ))}
         </div>
         <div className="guide-scroll">
@@ -54,8 +54,8 @@ export function GuidePage() {
           )}
           {timeline.isError && (
             <div className="empty-state">
-              <strong>Guía no disponible</strong>
-              <p>Los canales siguen disponibles aunque no exista información EPG.</p>
+              <strong>{t('guide.unavailable')}</strong>
+              <p>{t('guide.unavailableHint')}</p>
             </div>
           )}
           {timeline.data?.map(({ channel, programs }) => (

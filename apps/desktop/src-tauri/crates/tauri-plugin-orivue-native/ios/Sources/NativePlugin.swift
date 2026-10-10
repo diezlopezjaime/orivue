@@ -28,6 +28,10 @@ class NativePlugin: Plugin {
     invoke.reject("the native player is not available on this platform")
   }
 
+  @objc public func seek(_ invoke: Invoke) throws {
+    invoke.reject("the native player is not available on this platform")
+  }
+
   @objc public func selectTrack(_ invoke: Invoke) throws {
     invoke.reject("the native player is not available on this platform")
   }

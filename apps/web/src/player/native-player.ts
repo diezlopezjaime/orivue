@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import type { NativePlayerApi } from '../platform';
 import type { Player, PlayerCallbacks } from './types';
 
@@ -9,6 +10,10 @@ export function createNativePlayer(api: NativePlayerApi, callbacks: PlayerCallba
   let unsubscribe: (() => void) | undefined;
   let loaded = false;
   const subscription = api.subscribe((event) => {
+    if (event.type === 'position') {
+      callbacks.onPosition(event.position, event.duration);
+      return;
+    }
     if (event.type === 'tracks') {
       callbacks.onTracks({
         audio: event.audio.map((track) => ({ id: track.id, label: track.label })),
@@ -25,10 +30,10 @@ export function createNativePlayer(api: NativePlayerApi, callbacks: PlayerCallba
         callbacks.onStatus('playing');
         break;
       case 'ended':
-        callbacks.onStatus('error', 'La emisión ha terminado.');
+        callbacks.onStatus('error', t('player.ended'));
         break;
       case 'error':
-        callbacks.onStatus('error', event.message ?? 'El reproductor nativo no pudo reproducir.');
+        callbacks.onStatus('error', event.message ?? t('player.nativeFailed'));
         break;
     }
   });
@@ -47,6 +52,7 @@ export function createNativePlayer(api: NativePlayerApi, callbacks: PlayerCallba
         headers: stream.headers,
         kind: stream.kind,
         title,
+        live: stream.live,
       });
     },
     async stop() {
@@ -62,6 +68,9 @@ export function createNativePlayer(api: NativePlayerApi, callbacks: PlayerCallba
     },
     setAspect(mode) {
       void api.setAspect(mode).catch(() => undefined);
+    },
+    seek(positionSeconds) {
+      void api.seek(positionSeconds).catch(() => undefined);
     },
     selectTrack(kind, id) {
       void api.selectTrack(kind, id).catch(() => undefined);

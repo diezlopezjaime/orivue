@@ -3,10 +3,19 @@ import { parseM3u } from '@orivue/m3u-parser';
 import { extractAceContentId } from '@orivue/stream-resolvers';
 import { parseXmltv } from '@orivue/xmltv-parser';
 import {
+  buildApiUrl,
   buildEpgUrl,
+  buildEpisodeUrl,
+  buildMovieUrl,
   buildPlaylistUrl,
+  buildSeriesInfoUrl,
   createXtreamCredentials,
   fetchAccountInfo,
+  isVodStreamUrl,
+  parseCategories,
+  parseMovies,
+  parseSeriesInfo,
+  parseSeriesList,
   parseXtreamUrl,
   type XtreamAccountInfo,
   type XtreamCredentials,
@@ -30,16 +39,22 @@ import type {
   Program,
   PublicSource,
   RefreshResult,
+  SeriesInfo,
   Source,
   StoredChannel,
   TimelineRow,
   UpdateSourceInput,
+  VodCategory,
+  VodItem,
+  VodKind,
+  VodQuery,
 } from './types.js';
 
 const SOURCES_KEY = 'sources';
 const LIBRARY_KEY = 'library';
 const SETTINGS_KEY = 'settings';
 const MAX_RECENTS = 50;
+const SERIES_INFO_TTL = 24 * 3_600_000;
 
 export const DEFAULT_SETTINGS: EngineSettings = {
   allowPrivateNetwork: false,
@@ -76,6 +91,8 @@ export class OrivueEngine {
   private settings: EngineSettings = { ...DEFAULT_SETTINGS };
   private channelsBySource = new Map<string, StoredChannel[]>();
   private channelIndex = new Map<string, StoredChannel>();
+  private vodBySource = new Map<string, VodItem[]>();
+  private vodIndex = new Map<string, VodItem>();
   private epgNames = new Map<string, Record<string, string>>();
   private readonly listeners = new Set<EngineListener>();
   private readonly refreshing = new Set<string>();
@@ -105,6 +122,7 @@ export class OrivueEngine {
     this.library = { ...emptyLibrary(), ...(library ?? {}) };
     this.settings = { ...DEFAULT_SETTINGS, ...(settings ?? {}) };
     this.channelsBySource = await this.storage.readAllChannels();
+    this.vodBySource = await this.storage.readAllVod();
     for (const source of this.sources) {
       if (!this.channelsBySource.has(source.id)) this.channelsBySource.set(source.id, []);
       this.epgNames.set(source.id, await this.storage.readEpgNames(source.id));
@@ -187,6 +205,8 @@ export class OrivueEngine {
       epgError: null,
       channelCount: 0,
       programCount: 0,
+      movieCount: 0,
+      seriesCount: 0,
       account: null,
       createdAt: now,
       updatedAt: now,
@@ -259,6 +279,7 @@ export class OrivueEngine {
     if (!this.sources.some((source) => source.id === id)) return false;
     this.sources = this.sources.filter((source) => source.id !== id);
     this.channelsBySource.delete(id);
+    this.vodBySource.delete(id);
     this.epgNames.delete(id);
     await this.storage.deleteSource(id);
     this.rebuildIndex();
@@ -322,9 +343,23 @@ export class OrivueEngine {
       if (!content.trim()) throw new Error('The playlist is empty');
       const parsed = parseM3u(content, { sourceId: id });
       warnings.push(...parsed.warnings.slice(0, 20).map((warning) => warning.message));
-      if (parsed.channels.length === 0)
+      let catalogue: { movies: VodItem[]; series: VodItem[] } | undefined;
+      if (source.kind === 'xtream') {
+        try {
+          const fetched = await this.fetchCatalogue(source);
+          // An empty catalogue means the panel does not expose VOD through the API.
+          if (fetched.movies.length || fetched.series.length) catalogue = fetched;
+        } catch (error) {
+          warnings.push(`VOD: ${safeError(error)}`);
+        }
+      }
+      // With a catalogue the on-demand entries of the M3U are redundant in the live list.
+      const liveEntries = catalogue
+        ? parsed.channels.filter((channel) => !isVodStreamUrl(channel.url))
+        : parsed.channels;
+      if (liveEntries.length === 0 && !catalogue)
         throw new Error('The playlist did not contain any playable channels');
-      const channels: StoredChannel[] = parsed.channels.map((channel, order) => {
+      const channels: StoredChannel[] = liveEntries.map((channel, order) => {
         const groupName = channel.groupName?.trim() || 'Sin categoría';
         return {
           id: channel.id,
@@ -341,6 +376,11 @@ export class OrivueEngine {
       });
       await this.storage.writeChannels(id, channels);
       this.channelsBySource.set(id, channels);
+      if (catalogue) {
+        const items = [...catalogue.movies, ...catalogue.series];
+        await this.storage.writeVod(id, items);
+        this.vodBySource.set(id, items);
+      }
       this.rebuildIndex();
       const now = new Date(this.now()).toISOString();
       let epgUrl = source.epgUrl;
@@ -351,6 +391,8 @@ export class OrivueEngine {
         lastUpdatedAt: now,
         lastError: null,
         channelCount: channels.length,
+        movieCount: catalogue ? catalogue.movies.length : this.requireSource(id).movieCount,
+        seriesCount: catalogue ? catalogue.series.length : this.requireSource(id).seriesCount,
         account,
         epgUrl,
         updatedAt: now,
@@ -358,6 +400,7 @@ export class OrivueEngine {
       await this.persistSources();
       this.emit({ type: 'sources' });
       this.emit({ type: 'channels', sourceId: id });
+      if (catalogue) this.emit({ type: 'vod', sourceId: id });
       let programCount = this.requireSource(id).programCount;
       if (epgUrl) {
         try {
@@ -369,7 +412,14 @@ export class OrivueEngine {
         }
       }
       this.emit({ type: 'refresh', sourceId: id, phase: 'done' });
-      return { channelCount: channels.length, programCount, warnings };
+      const refreshed = this.requireSource(id);
+      return {
+        channelCount: channels.length,
+        programCount,
+        movieCount: refreshed.movieCount,
+        seriesCount: refreshed.seriesCount,
+        warnings,
+      };
     } catch (error) {
       const now = new Date(this.now()).toISOString();
       this.replaceSource({
@@ -520,7 +570,9 @@ export class OrivueEngine {
         if (query.groupId && channel.groupId !== query.groupId) continue;
         if (query.favorite && !this.library.favorites[channel.id]) continue;
         if (query.recent && !this.library.recents[channel.id]) continue;
-        if (!query.includeHidden && this.isHidden(channel)) continue;
+        if (query.hiddenOnly) {
+          if (!this.isHidden(channel)) continue;
+        } else if (!query.includeHidden && this.isHidden(channel)) continue;
         if (tokens.length) {
           const haystack = `${this.displayName(channel)} ${channel.groupName}`.toLocaleLowerCase(
             'es',
@@ -710,17 +762,182 @@ export class OrivueEngine {
     if (aceId) {
       return {
         channel,
+        title: channel.name,
+        live: true,
         url: `${this.aceStreamEndpoint}/ace/getstream?id=${encodeURIComponent(aceId)}`,
         kind: 'acestream',
         headers: {},
         allowLoopback: true,
       };
     }
+    const kind = detectStreamKind(stored.url);
     return {
       channel,
+      title: channel.name,
+      live: kind !== 'http',
       url: stored.url,
-      kind: detectStreamKind(stored.url),
+      kind,
       headers: stored.headers,
+      allowLoopback: this.settings.allowPrivateNetwork,
+    };
+  }
+
+  // --------------------------------------------------------------------- VOD
+
+  private async fetchJson(url: string, maxBytes = 64 * 1024 * 1024): Promise<unknown> {
+    const text = await this.platform.fetchText(url, {
+      maxBytes,
+      timeoutMs: 90_000,
+      allowPrivateNetwork: this.settings.allowPrivateNetwork,
+    });
+    return JSON.parse(text) as unknown;
+  }
+
+  private async fetchCatalogue(source: Source): Promise<{ movies: VodItem[]; series: VodItem[] }> {
+    const credentials = source.xtream!;
+    const [movieCategories, seriesCategories] = await Promise.all([
+      this.fetchJson(buildApiUrl(credentials, 'get_vod_categories')).then(parseCategories),
+      this.fetchJson(buildApiUrl(credentials, 'get_series_categories')).then(parseCategories),
+    ]);
+    const movieNames = new Map(movieCategories.map((category) => [category.id, category.name]));
+    const seriesNames = new Map(seriesCategories.map((category) => [category.id, category.name]));
+    const [movieList, seriesList] = await Promise.all([
+      this.fetchJson(buildApiUrl(credentials, 'get_vod_streams')).then(parseMovies),
+      this.fetchJson(buildApiUrl(credentials, 'get_series')).then(parseSeriesList),
+    ]);
+    const movies: VodItem[] = movieList.map((movie) => ({
+      id: `${source.id}:movie:${movie.id}`,
+      sourceId: source.id,
+      kind: 'movie',
+      remoteId: movie.id,
+      name: movie.name,
+      categoryId: movie.categoryId,
+      categoryName: movie.categoryId ? (movieNames.get(movie.categoryId) ?? null) : null,
+      poster: movie.poster,
+      rating: movie.rating,
+      year: movie.year,
+      plot: null,
+      containerExtension: movie.containerExtension,
+      addedAt: movie.addedAt,
+    }));
+    const series: VodItem[] = seriesList.map((item) => ({
+      id: `${source.id}:series:${item.id}`,
+      sourceId: source.id,
+      kind: 'series',
+      remoteId: item.id,
+      name: item.name,
+      categoryId: item.categoryId,
+      categoryName: item.categoryId ? (seriesNames.get(item.categoryId) ?? null) : null,
+      poster: item.poster,
+      rating: item.rating,
+      year: item.year,
+      plot: item.plot,
+      containerExtension: null,
+      addedAt: null,
+    }));
+    return { movies, series };
+  }
+
+  listVodCategories(kind: VodKind, sourceId?: string): VodCategory[] {
+    const categories = new Map<string, VodCategory>();
+    for (const [source, items] of this.vodBySource) {
+      if (sourceId && source !== sourceId) continue;
+      for (const item of items) {
+        if (item.kind !== kind || !item.categoryId) continue;
+        const id = `${source}:${kind}:${item.categoryId}`;
+        const existing = categories.get(id);
+        if (existing) categories.set(id, { ...existing, count: existing.count + 1 });
+        else
+          categories.set(id, {
+            id,
+            sourceId: source,
+            kind,
+            name: item.categoryName ?? item.categoryId,
+            count: 1,
+          });
+      }
+    }
+    return [...categories.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  listVod(query: VodQuery): { items: VodItem[]; total: number } {
+    const tokens = query.search?.trim().toLocaleLowerCase('es').split(/\s+/).filter(Boolean) ?? [];
+    const matches: VodItem[] = [];
+    for (const [source, items] of this.vodBySource) {
+      if (query.sourceId && source !== query.sourceId) continue;
+      for (const item of items) {
+        if (item.kind !== query.kind) continue;
+        if (
+          query.categoryId &&
+          `${source}:${query.kind}:${item.categoryId ?? ''}` !== query.categoryId
+        )
+          continue;
+        if (tokens.length) {
+          const haystack = item.name.toLocaleLowerCase('es');
+          if (!tokens.every((token) => haystack.includes(token))) continue;
+        }
+        matches.push(item);
+      }
+    }
+    const offset = query.offset ?? 0;
+    const limit = Math.min(query.limit ?? 500, 5000);
+    return { items: matches.slice(offset, offset + limit), total: matches.length };
+  }
+
+  getVod(id: string): VodItem | undefined {
+    return this.vodIndex.get(id);
+  }
+
+  /** Seasons and episodes of a series, cached for a day. */
+  async getSeriesInfo(id: string): Promise<SeriesInfo> {
+    const item = this.vodIndex.get(id);
+    if (!item || item.kind !== 'series') throw new Error('Series not found');
+    const cached = await this.storage.readSeriesInfo(id);
+    if (cached && this.now() - Date.parse(cached.fetchedAt) < SERIES_INFO_TTL) return cached;
+    const source = this.requireSource(item.sourceId);
+    const payload = await this.fetchJson(
+      buildSeriesInfoUrl(source.xtream!, item.remoteId),
+      8 * 1024 * 1024,
+    );
+    const parsed = parseSeriesInfo(payload);
+    const info: SeriesInfo = {
+      id,
+      plot: parsed.plot ?? item.plot,
+      seasons: parsed.seasons,
+      fetchedAt: new Date(this.now()).toISOString(),
+    };
+    await this.storage.writeSeriesInfo(info);
+    return info;
+  }
+
+  /** Playable stream for a movie, or for an episode of a series when `episodeId` is given. */
+  async getPlayableVod(id: string, episodeId?: string): Promise<PlayableStream> {
+    const item = this.vodIndex.get(id);
+    if (!item) throw new Error('Title not found');
+    const source = this.requireSource(item.sourceId);
+    const credentials = source.xtream!;
+    if (item.kind === 'movie') {
+      return {
+        title: item.name,
+        live: false,
+        url: buildMovieUrl(credentials, item.remoteId, item.containerExtension ?? 'mp4'),
+        kind: 'http',
+        headers: {},
+        allowLoopback: this.settings.allowPrivateNetwork,
+      };
+    }
+    if (!episodeId) throw new Error('An episode is required to play a series');
+    const info = await this.getSeriesInfo(id);
+    const episode = info.seasons
+      .flatMap((season) => season.episodes)
+      .find((e) => e.id === episodeId);
+    if (!episode) throw new Error('Episode not found');
+    return {
+      title: `${item.name} · ${episode.season}x${String(episode.number).padStart(2, '0')} ${episode.title}`,
+      live: false,
+      url: buildEpisodeUrl(credentials, episode.id, episode.containerExtension),
+      kind: 'http',
+      headers: {},
       allowLoopback: this.settings.allowPrivateNetwork,
     };
   }
@@ -741,6 +958,9 @@ export class OrivueEngine {
     this.channelIndex = new Map();
     for (const channels of this.channelsBySource.values())
       for (const channel of channels) this.channelIndex.set(channel.id, channel);
+    this.vodIndex = new Map();
+    for (const items of this.vodBySource.values())
+      for (const item of items) this.vodIndex.set(item.id, item);
     this.nowNextCache.clear();
   }
 

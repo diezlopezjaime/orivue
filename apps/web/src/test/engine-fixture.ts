@@ -60,6 +60,8 @@ export async function installTestEngine(
         const handle: StreamHandle = {
           id: `h${opened.length + 1}`,
           url: playable.url,
+          title: playable.title,
+          live: playable.live,
           upstreamUrl: playable.url,
           kind: playable.kind,
           headers: playable.headers,

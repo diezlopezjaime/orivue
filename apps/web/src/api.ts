@@ -8,6 +8,8 @@ import type {
   Channel as EngineChannel,
   EngineSettings,
   Program as EngineProgram,
+  VodKind,
+  VodQuery,
 } from '@orivue/engine';
 import type { XtreamOutput } from '@orivue/xtream';
 import { getEngine } from './engine';
@@ -27,6 +29,7 @@ function toProgram(program: EngineProgram, channelId: string): Program {
 function toChannel(channel: EngineChannel): Channel {
   return {
     id: channel.id,
+    sourceId: channel.sourceId,
     name: channel.name,
     number: channel.number,
     logoUrl: channel.logo,
@@ -135,6 +138,7 @@ export const api = {
     search?: string | undefined;
     favorite?: boolean | undefined;
     recent?: boolean | undefined;
+    hiddenOnly?: boolean | undefined;
   }): Promise<Channel[]> {
     const page = getEngine().listChannels({ ...input, limit: 2000 });
     return attachEpg(page.items.map(toChannel));
@@ -156,6 +160,14 @@ export const api = {
 
   hideGroup: (id: string, hidden: boolean) => getEngine().setGroupHidden(id, hidden),
 
+  renameChannel: (id: string, name: string | null) => getEngine().renameChannel(id, name),
+
+  mapEpg: (id: string, epgChannelId: string | null) => getEngine().mapEpg(id, epgChannelId),
+
+  epgChannels: (sourceId: string) => getEngine().listEpgChannels(sourceId),
+
+  epgKeyFor: (id: string) => getEngine().epgKeyFor(id),
+
   async timeline(from: string, to: string): Promise<TimelineChannel[]> {
     const engine = getEngine();
     const channels = engine.listChannels({ limit: 200 }).items;
@@ -169,6 +181,14 @@ export const api = {
       programs: row.programs.map((program) => toProgram(program, row.channel.id)),
     }));
   },
+
+  playable: (channelId: string) => getEngine().getPlayable(channelId),
+
+  vodCategories: (kind: VodKind) => getEngine().listVodCategories(kind),
+  vod: (query: VodQuery) => getEngine().listVod(query),
+  vodItem: (id: string) => getEngine().getVod(id),
+  seriesInfo: (id: string) => getEngine().getSeriesInfo(id),
+  playableVod: (id: string, episodeId?: string) => getEngine().getPlayableVod(id, episodeId),
 
   settings: (): EngineSettings => getEngine().getSettings(),
   updateSettings: (patch: Partial<EngineSettings>) => getEngine().updateSettings(patch),

@@ -1,5 +1,6 @@
 import type Hls from 'hls.js';
 import type Mpegts from 'mpegts.js';
+import { t } from '../i18n';
 import type { StreamHandle } from '../platform';
 import type { Player, PlayerCallbacks } from './types';
 
@@ -19,9 +20,6 @@ function loadMpegts(): Promise<MpegtsModule> {
   return mpegtsModule;
 }
 
-const UNSUPPORTED_CODEC =
-  'Este stream usa un códec que el reproductor web no puede decodificar. En Android o Fire TV se usa el reproductor nativo.';
-
 /**
  * Web backend: native `<video>` for HLS on WebKit and progressive files,
  * hls.js for HLS elsewhere and mpegts.js for MPEG-TS/FLV over MSE.
@@ -30,6 +28,13 @@ export function createWebPlayer(video: HTMLVideoElement, callbacks: PlayerCallba
   let hls: Hls | undefined;
   let mpegts: Mpegts.Player | undefined;
   let generation = 0;
+  let live = true;
+  const onTime = () => {
+    if (!live && Number.isFinite(video.duration) && video.duration > 0)
+      callbacks.onPosition(video.currentTime, video.duration);
+  };
+  video.addEventListener('timeupdate', onTime);
+  video.addEventListener('durationchange', onTime);
 
   const teardown = () => {
     generation += 1;
@@ -71,7 +76,7 @@ export function createWebPlayer(video: HTMLVideoElement, callbacks: PlayerCallba
         attachNative(url);
         return;
       }
-      callbacks.onStatus('error', 'Este navegador no admite la reproducción HLS.');
+      callbacks.onStatus('error', t('player.noHls'));
       return;
     }
     hls = new HlsClass({ maxBufferLength: 30, backBufferLength: 10, enableWorker: true });
@@ -95,9 +100,9 @@ export function createWebPlayer(video: HTMLVideoElement, callbacks: PlayerCallba
       const type = String(data.type);
       const message =
         type === 'mediaError'
-          ? UNSUPPORTED_CODEC
+          ? t('player.unsupportedCodec')
           : type === 'networkError'
-            ? 'No se pudo descargar el stream HLS.'
+            ? t('player.hlsDownload')
             : String(data.details);
       callbacks.onStatus('error', message);
     });
@@ -108,7 +113,7 @@ export function createWebPlayer(video: HTMLVideoElement, callbacks: PlayerCallba
     if (current !== generation) return;
     const features = MpegtsClass.getFeatureList();
     if (!features.mseLivePlayback) {
-      callbacks.onStatus('error', 'Este navegador no admite MPEG-TS en directo.');
+      callbacks.onStatus('error', t('player.noTs'));
       return;
     }
     const isFlv =
@@ -129,10 +134,10 @@ export function createWebPlayer(video: HTMLVideoElement, callbacks: PlayerCallba
     mpegts.on(MpegtsClass.Events.ERROR, (type: string, detail: string) => {
       const message =
         type === MpegtsClass.ErrorTypes.MEDIA_ERROR
-          ? UNSUPPORTED_CODEC
+          ? t('player.unsupportedCodec')
           : detail === MpegtsClass.ErrorDetails.NETWORK_STATUS_CODE_INVALID
-            ? 'El servidor rechazó la conexión al stream.'
-            : 'No se pudo descargar el stream MPEG-TS.';
+            ? t('player.rejected')
+            : t('player.tsDownload');
       callbacks.onStatus('error', message);
     });
     mpegts.on(MpegtsClass.Events.MEDIA_INFO, () => callbacks.onTracks({ audio: [], text: [] }));
@@ -144,6 +149,7 @@ export function createWebPlayer(video: HTMLVideoElement, callbacks: PlayerCallba
     kind: 'web',
     async load(stream) {
       teardown();
+      live = stream.live;
       const current = generation;
       callbacks.onStatus('connecting');
       callbacks.onTracks({ audio: [], text: [] });
@@ -174,6 +180,10 @@ export function createWebPlayer(video: HTMLVideoElement, callbacks: PlayerCallba
     setAspect(mode) {
       video.style.objectFit = mode;
     },
+    seek(positionSeconds) {
+      if (live || !Number.isFinite(video.duration)) return;
+      video.currentTime = Math.min(Math.max(0, positionSeconds), video.duration);
+    },
     selectTrack(kind, id) {
       const index = id === null ? -1 : Number(id);
       if (kind === 'audio') {
@@ -188,6 +198,8 @@ export function createWebPlayer(video: HTMLVideoElement, callbacks: PlayerCallba
     },
     destroy() {
       teardown();
+      video.removeEventListener('timeupdate', onTime);
+      video.removeEventListener('durationchange', onTime);
     },
   };
 }

@@ -65,3 +65,46 @@ test('persists sources across reloads and detects Xtream URLs', async ({ page })
   await page.getByRole('link', { name: 'Mis listas' }).click();
   await expect(page.getByRole('heading', { name: 'Panel' })).toBeVisible();
 });
+
+test('browses the Xtream video catalogue and manages channel options', async ({ page }) => {
+  const API = 'http://panel.test:8080/player_api.php?username=u&password=p';
+  await page.route('http://panel.test:8080/**', (route) => {
+    const url = route.request().url();
+    if (url.includes('action=get_vod_categories'))
+      return route.fulfill({ json: [{ category_id: '1', category_name: 'Acción' }] });
+    if (url.includes('action=get_series_categories')) return route.fulfill({ json: [] });
+    if (url.includes('action=get_vod_streams'))
+      return route.fulfill({
+        json: [
+          { stream_id: 1, name: 'Película Alfa', category_id: '1', container_extension: 'mp4' },
+        ],
+      });
+    if (url.includes('action=get_series')) return route.fulfill({ json: [] });
+    if (url.startsWith(API))
+      return route.fulfill({ json: { user_info: { status: 'Active', auth: 1 }, server_info: {} } });
+    if (url.includes('xmltv.php'))
+      return route.fulfill({ body: '<tv></tv>', contentType: 'text/xml' });
+    return route.fulfill({ body: PLAYLIST, contentType: 'audio/x-mpegurl' });
+  });
+  await page.getByRole('link', { name: 'Mis listas' }).click();
+  await page.getByRole('button', { name: '+ Añadir lista' }).click();
+  await page.getByRole('tab', { name: 'Cuenta Xtream Codes' }).click();
+  await page.getByPlaceholder('Mi proveedor').fill('Panel');
+  await page.getByPlaceholder('http://panel.ejemplo:8080').fill('http://panel.test:8080');
+  await page.getByLabel('Usuario').fill('u');
+  await page.getByLabel('Contraseña').fill('p');
+  await page.getByRole('button', { name: 'Conectar cuenta' }).click();
+  await expect(page.getByText('1 películas · 0 series')).toBeVisible();
+  await page.getByRole('link', { name: 'Vídeo' }).click();
+  await expect(page.getByRole('button', { name: 'Película Alfa' })).toBeVisible();
+  await page.getByRole('button', { name: 'Película Alfa' }).click();
+  await expect(page.getByRole('dialog', { name: 'Reproduciendo Película Alfa' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.getByRole('link', { name: 'En directo' }).click();
+  await page.getByRole('button', { name: 'Opciones de Canal Aurora' }).click();
+  await page.getByLabel('Ocultar este canal').check();
+  await page.getByRole('button', { name: 'Guardar' }).click();
+  await expect(page.getByRole('button', { name: 'Reproducir Canal Aurora' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Ocultos' }).click();
+  await expect(page.getByRole('button', { name: 'Reproducir Canal Aurora' })).toBeVisible();
+});

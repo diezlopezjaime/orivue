@@ -7,10 +7,12 @@ import { useBackButton } from './hooks/useBackButton';
 import { useTvMode } from './hooks/useDevice';
 import { useEngineSync } from './hooks/useEngineSync';
 import { useTvNavigation } from './hooks/useTvNavigation';
+import { useT } from './i18n';
 import { BrowsePage } from './pages/BrowsePage';
 import { GuidePage } from './pages/GuidePage';
 import { ListsPage } from './pages/ListsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { VideoPage } from './pages/VideoPage';
 import { useAppStore } from './store';
 import type { Channel } from './types';
 
@@ -19,11 +21,14 @@ const PlayerOverlay = lazy(() =>
 );
 
 export function App() {
+  const t = useT();
   useTvNavigation();
   useEngineSync();
   useTvMode();
   const current = useAppStore((state) => state.currentChannel);
+  const currentVod = useAppStore((state) => state.currentVod);
   const play = useAppStore((state) => state.play);
+  const playVod = useAppStore((state) => state.playVod);
   const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
@@ -36,7 +41,7 @@ export function App() {
   const leave = useCallback(() => void getAppPlatform().exit(), []);
   // The player owns the back button while open; otherwise Back returns home
   // and, from the home screen, leaves the app as TV launchers expect.
-  useBackButton(current ? undefined : location.pathname !== '/' ? goHome : leave);
+  useBackButton(current || currentVod ? undefined : location.pathname !== '/' ? goHome : leave);
   useEffect(() => {
     const first = document.querySelector<HTMLElement>('[data-tv-focus]');
     if (!document.activeElement || document.activeElement === document.body) first?.focus();
@@ -47,20 +52,28 @@ export function App() {
       <Routes>
         <Route path="/" element={<BrowsePage />} />
         <Route path="/guide" element={<GuidePage />} />
+        <Route path="/video" element={<VideoPage />} />
         <Route path="/lists" element={<ListsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      {current && (
+      {(current || currentVod) && (
         <Suspense
           fallback={
-            <div className="player-shell" role="status" aria-label="Preparando reproductor" />
+            <div className="player-shell" role="status" aria-label={t('player.preparing')} />
           }
         >
           <PlayerOverlay
-            channel={current}
-            channels={uniqueChannels.length ? uniqueChannels : [current]}
-            onClose={() => play()}
+            target={
+              current
+                ? {
+                    kind: 'channel',
+                    channel: current,
+                    channels: uniqueChannels.length ? uniqueChannels : [current],
+                  }
+                : { kind: 'vod', vod: currentVod! }
+            }
+            onClose={() => (current ? play() : playVod())}
             onChange={onChange}
           />
         </Suspense>

@@ -44,6 +44,8 @@ export function createBrowserPlatform(): AppPlatform {
         const handle: StreamHandle = {
           id: `browser-${counter}`,
           url,
+          title: playable.title,
+          live: playable.live,
           upstreamUrl: playable.url,
           kind: playable.kind === 'acestream' ? detectStreamKind(playable.url) : playable.kind,
           headers: playable.headers,

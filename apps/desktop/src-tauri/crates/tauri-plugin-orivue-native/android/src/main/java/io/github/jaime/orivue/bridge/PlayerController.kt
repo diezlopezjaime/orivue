@@ -1,5 +1,7 @@
 package io.github.jaime.orivue.bridge
 
+import android.os.Handler
+import android.os.Looper
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -30,6 +32,7 @@ import androidx.media3.ui.PlayerView
 class PlayerController(private val activity: AppCompatActivity, private val listener: Listener) {
   interface Listener {
     fun onState(state: String, message: String?)
+    fun onPosition(positionSeconds: Double, durationSeconds: Double)
     fun onTracks(audio: List<TrackInfo>, text: List<TrackInfo>)
   }
 
@@ -50,6 +53,17 @@ class PlayerController(private val activity: AppCompatActivity, private val list
   private var player: ExoPlayer? = null
   private var currentTracks: Tracks = Tracks.EMPTY
   private var attached = false
+  private var live = true
+  private val handler = Handler(Looper.getMainLooper())
+  private val positionTicker = object : Runnable {
+    override fun run() {
+      val exo = player ?: return
+      if (!live && exo.duration > 0) {
+        listener.onPosition(exo.currentPosition / 1000.0, exo.duration / 1000.0)
+      }
+      handler.postDelayed(this, 1000)
+    }
+  }
 
   private val playerListener = object : Player.Listener {
     override fun onPlaybackStateChanged(playbackState: Int) {
@@ -108,8 +122,9 @@ class PlayerController(private val activity: AppCompatActivity, private val list
     return created
   }
 
-  fun load(url: String, headers: Map<String, String>, kind: String) {
+  fun load(url: String, headers: Map<String, String>, kind: String, isLive: Boolean) {
     attach()
+    live = isLive
     val exo = ensurePlayer()
     val httpFactory = DefaultHttpDataSource.Factory()
       .setAllowCrossProtocolRedirects(true)
@@ -132,9 +147,18 @@ class PlayerController(private val activity: AppCompatActivity, private val list
     view.visibility = android.view.View.VISIBLE
     activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     listener.onState("buffering", null)
+    handler.removeCallbacks(positionTicker)
+    handler.postDelayed(positionTicker, 1000)
+  }
+
+  fun seek(positionSeconds: Double) {
+    val exo = player ?: return
+    if (exo.isCurrentMediaItemLive) return
+    exo.seekTo((positionSeconds * 1000).toLong().coerceAtLeast(0))
   }
 
   fun stop() {
+    handler.removeCallbacks(positionTicker)
     player?.stop()
     player?.clearMediaItems()
     view.visibility = android.view.View.GONE
@@ -199,6 +223,7 @@ class PlayerController(private val activity: AppCompatActivity, private val list
   }
 
   fun release() {
+    handler.removeCallbacks(positionTicker)
     player?.removeListener(playerListener)
     player?.release()
     player = null

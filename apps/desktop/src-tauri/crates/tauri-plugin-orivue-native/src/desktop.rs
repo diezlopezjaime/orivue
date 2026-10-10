@@ -36,6 +36,10 @@ impl<R: Runtime> OrivueNative<R> {
         Err(Error::Unavailable)
     }
 
+    pub fn seek(&self, _request: SeekRequest) -> crate::Result<()> {
+        Err(Error::Unavailable)
+    }
+
     pub fn select_track(&self, _request: TrackRequest) -> crate::Result<()> {
         Err(Error::Unavailable)
     }

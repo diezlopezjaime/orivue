@@ -21,6 +21,7 @@ import app.tauri.plugin.Plugin
 @InvokeArg
 class LoadArgs {
   lateinit var url: String
+  var live: Boolean? = null
   var headers: Map<String, String> = emptyMap()
   var kind: String? = null
   var title: String? = null
@@ -40,6 +41,11 @@ class VolumeArgs {
 @InvokeArg
 class AspectArgs {
   lateinit var mode: String
+}
+
+@InvokeArg
+class SeekArgs {
+  var positionSeconds: Double = 0.0
 }
 
 @InvokeArg
@@ -92,6 +98,13 @@ class NativePlugin(private val activity: Activity) : Plugin(activity) {
         trigger("state", payload)
       }
 
+      override fun onPosition(positionSeconds: Double, durationSeconds: Double) {
+        val payload = JSObject()
+        payload.put("position", positionSeconds)
+        payload.put("duration", durationSeconds)
+        trigger("position", payload)
+      }
+
       override fun onTracks(audio: List<PlayerController.TrackInfo>, text: List<PlayerController.TrackInfo>) {
         val payload = JSObject()
         payload.put("audio", tracksToJson(audio))
@@ -121,7 +134,7 @@ class NativePlugin(private val activity: Activity) : Plugin(activity) {
     val args = invoke.parseArgs(LoadArgs::class.java)
     activity.runOnUiThread {
       try {
-        controller().load(args.url, args.headers, args.kind ?: "unknown")
+        controller().load(args.url, args.headers, args.kind ?: "unknown", args.live ?: true)
         invoke.resolve()
       } catch (error: Exception) {
         invoke.reject(error.message ?: "The native player could not start")
@@ -160,6 +173,15 @@ class NativePlugin(private val activity: Activity) : Plugin(activity) {
     val args = invoke.parseArgs(AspectArgs::class.java)
     activity.runOnUiThread {
       player?.setAspect(args.mode)
+      invoke.resolve()
+    }
+  }
+
+  @Command
+  fun seek(invoke: Invoke) {
+    val args = invoke.parseArgs(SeekArgs::class.java)
+    activity.runOnUiThread {
+      player?.seek(args.positionSeconds)
       invoke.resolve()
     }
   }

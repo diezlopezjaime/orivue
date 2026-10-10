@@ -59,6 +59,13 @@ impl<R: Runtime> OrivueNative<R> {
             .map_err(Into::into)
     }
 
+    pub fn seek(&self, request: SeekRequest) -> crate::Result<()> {
+        self.0
+            .run_mobile_plugin::<Empty>("seek", request)
+            .map(|_| ())
+            .map_err(Into::into)
+    }
+
     pub fn select_track(&self, request: TrackRequest) -> crate::Result<()> {
         self.0
             .run_mobile_plugin::<Empty>("selectTrack", request)

@@ -6,6 +6,7 @@ permissions = [
   "allow-set-paused",
   "allow-set-volume",
   "allow-set-aspect",
+  "allow-seek",
   "allow-select-track",
   "allow-get-tracks",
   "allow-set-back-handling",

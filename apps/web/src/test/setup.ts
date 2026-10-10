@@ -1,8 +1,12 @@
 import '@testing-library/jest-dom/vitest';
 import { afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
+import { setLanguagePreference } from '../i18n';
+
+setLanguagePreference('es');
 
 afterEach(() => {
+  setLanguagePreference('es');
   cleanup();
   vi.restoreAllMocks();
   localStorage.clear();

@@ -9,6 +9,7 @@ Reproductor nativo, botón atrás e información del dispositivo
 - `allow-set-paused`
 - `allow-set-volume`
 - `allow-set-aspect`
+- `allow-seek`
 - `allow-select-track`
 - `allow-get-tracks`
 - `allow-set-back-handling`
@@ -178,6 +179,32 @@ Enables the remove_listener command without any pre-configured scope.
 <td>
 
 Denies the remove_listener command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`orivue-native:allow-seek`
+
+</td>
+<td>
+
+Enables the seek command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`orivue-native:deny-seek`
+
+</td>
+<td>
+
+Denies the seek command without any pre-configured scope.
 
 </td>
 </tr>

@@ -1,4 +1,11 @@
-import type { PublicSource, StreamKind } from '@orivue/engine';
+import type { Episode, PublicSource, StreamKind, VodItem } from '@orivue/engine';
+
+export type { Episode, SeriesInfo, VodCategory, VodItem, VodKind } from '@orivue/engine';
+
+export interface VodTarget {
+  item: VodItem;
+  episode?: Episode | undefined;
+}
 
 export type Playlist = PublicSource;
 
@@ -11,6 +18,7 @@ export interface Group {
 
 export interface Channel {
   id: string;
+  sourceId?: string;
   name: string;
   number?: number | null;
   logoUrl?: string | null;

@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub struct LoadRequest {
     pub url: String,
+    /// Live streams get latency chasing; on-demand streams report position.
+    #[serde(default)]
+    pub live: Option<bool>,
     #[serde(default)]
     pub headers: HashMap<String, String>,
     /// `hls`, `mpegts`, `http` or `unknown`; lets the player pick a media source.
@@ -34,6 +37,12 @@ pub struct VolumeRequest {
 pub struct AspectRequest {
     /// `contain`, `cover` or `fill`.
     pub mode: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeekRequest {
+    pub position_seconds: f64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

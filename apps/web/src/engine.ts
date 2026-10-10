@@ -20,12 +20,12 @@ export async function bootstrap(): Promise<void> {
 }
 
 export function getEngine(): OrivueEngine {
-  if (!engineInstance) throw new Error('El motor de Orivue todavía no está iniciado');
+  if (!engineInstance) throw new Error('The Orivue engine has not started yet');
   return engineInstance;
 }
 
 export function getAppPlatform(): AppPlatform {
-  if (!platformInstance) throw new Error('La plataforma todavía no está iniciada');
+  if (!platformInstance) throw new Error('The platform has not started yet');
   return platformInstance;
 }
 

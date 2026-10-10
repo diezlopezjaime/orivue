@@ -18,7 +18,10 @@ export function useTvNavigation(): void {
         ArrowDown: 'down',
       } as const;
       const direction = directions[event.key as keyof typeof directions];
-      if (direction && moveSpatialFocus(direction)) event.preventDefault();
+      if (!direction) return;
+      const dialogs = document.querySelectorAll<HTMLElement>('[data-tv-root]');
+      const root = dialogs.length ? dialogs[dialogs.length - 1] : document;
+      if (moveSpatialFocus(direction, root)) event.preventDefault();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
