@@ -39,8 +39,27 @@ jobs:
         run: pnpm typecheck
       - name: Tests unitarios e integración
         run: pnpm test
-      - name: Build web, servicio y paquetes
+      - name: Build web y paquetes
         run: pnpm build
+
+  rust:
+    name: rust (proxy y plugin)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - name: Formato Rust
+        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all -- --check
+      - name: Clippy del proxy
+        run: cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml -p orivue-stream-proxy --all-targets -- -D warnings
+      - name: Tests del proxy
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml -p orivue-stream-proxy
 
   e2e:
     name: e2e (Linux)

@@ -4,16 +4,21 @@
  * App Transport Security must allow local networking and arbitrary loads.
  * Run after `tauri ios init`, before building.
  */
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'src-tauri', 'gen', 'apple');
-const plist = join(root, 'orivue-desktop_iOS', 'Info.plist');
-if (!existsSync(plist)) {
-  console.error(`Info.plist not found at ${plist}; run "pnpm tauri ios init" first.`);
+const target = existsSync(root)
+  ? readdirSync(root).find(
+      (entry) => entry.endsWith('_iOS') && existsSync(join(root, entry, 'Info.plist')),
+    )
+  : undefined;
+if (!target) {
+  console.error(`No *_iOS/Info.plist found under ${root}; run "pnpm tauri ios init" first.`);
   process.exit(1);
 }
+const plist = join(root, target, 'Info.plist');
 let content = readFileSync(plist, 'utf8');
 if (!content.includes('NSAppTransportSecurity')) {
   content = content.replace(
