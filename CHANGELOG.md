@@ -8,6 +8,15 @@ Todos los cambios notables se documentarán aquí. El formato sigue
 
 ### Añadido
 
+- Catálogo a la carta de Xtream Codes: películas y series con temporadas y
+  episodios desde `player_api.php`, página Vídeo, barra de progreso y teclas de
+  avance/retroceso; las entradas VOD dejan de mezclarse con los canales.
+- Gestión de la biblioteca desde la interfaz: renombrar, ocultar y asignar guía
+  por canal, ocultar categorías, filtro de ocultos y "continuar viendo".
+- Zapping por número con el mando o el teclado, último canal y tecla `R`.
+- Inglés además de español, con detección automática y selector en Ajustes.
+- Prueba de escala opcional del motor (`ORIVUE_PERF=1`) con 30 000 canales y
+  guía de 7 días.
 - Aplicación multiplataforma desde un único proyecto Tauri 2: escritorio
   (Linux, Windows, macOS), Android, Fire TV Stick e iOS (ADR-0006).
 - `packages/engine`: motor portable con importación M3U/Xtream/archivo,

@@ -41,7 +41,10 @@ que funcione en un dispositivo hasta que exista una prueba manual anotada en
   (host, usuario y contraseña, o una URL `get.php` pegada tal cual) y archivos
   locales. Las URL `url-tvg` de la cabecera se usan como guía automáticamente.
 - **Biblioteca:** categorías, búsqueda, favoritos, recientes, canales y grupos
-  ocultos, nombres personalizados, refresco automático configurable.
+  ocultos, nombres personalizados, asignación manual de guía, "continuar
+  viendo", zapping por número y último canal, refresco automático.
+- **A la carta:** películas y series de cuentas Xtream Codes con temporadas,
+  episodios y barra de progreso.
 - **Guía:** XMLTV con ahora/siguiente y línea temporal; asociación por
   `tvg-id`, por nombre o manual.
 - **Reproducción:** MPEG-TS directo (`output=ts`), HLS, MP4/MKV progresivo y
@@ -50,6 +53,7 @@ que funcione en un dispositivo hasta que exista una prueba manual anotada en
   la webview decodifica H.264/AAC.
 - **Privacidad:** todo se guarda en el dispositivo. Las credenciales se
   redactan en pantalla, errores y registros. No hay telemetría.
+- **Idiomas:** español e inglés, con detección automática.
 
 ## Principios
 
@@ -178,6 +182,32 @@ de la última actualización de la guía en Mis listas.
 
 **El mando no mueve el foco.** Activa el modo televisión en Ajustes; en Fire TV
 se detecta automáticamente.
+
+## Rendimiento
+
+Con 30 000 canales y una guía de 1 000 canales × 7 días (`ORIVUE_PERF=1 pnpm
+--filter @orivue/engine exec vitest run test/engine.perf.test.ts`): listar,
+buscar y agrupar tardan unos 50 ms, ahora/siguiente de 500 canales 214 ms en
+frío y 0 ms en caliente, la línea temporal de 200 canales 424 ms y el arranque
+desde almacenamiento 140 ms. La importación completa ronda 17 s bajo la
+IndexedDB simulada de los tests; en un navegador real es más rápida.
+
+## Firma del APK de Android
+
+Sin keystore, CI publica una APK de depuración que se instala pero no se
+actualiza sobre otra firmada distinta. Para firmar de forma estable:
+
+```bash
+keytool -genkeypair -v -keystore orivue-release.jks -alias orivue \
+  -keyalg RSA -keysize 4096 -validity 10000
+base64 -w0 orivue-release.jks > orivue-release.jks.b64
+```
+
+Guarda en el repositorio (Settings → Secrets and variables → Actions) los
+secretos `ANDROID_KEYSTORE_BASE64` (contenido de `.b64`),
+`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` (`orivue`) y
+`ANDROID_KEY_PASSWORD`. El siguiente workflow producirá `orivue-universal-release.apk`
+firmada. Conserva el `.jks`: sin él no podrás publicar actualizaciones.
 
 ## Limitaciones conocidas
 

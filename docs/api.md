@@ -43,10 +43,22 @@ El engine recibe un `EnginePlatform`:
 | `timeline(desde, hasta, channelIds)` | Programas que solapan la ventana            |
 | `listEpgChannels(sourceId)`          | Canales XMLTV para asociación manual        |
 
+## A la carta (Xtream)
+
+| Método                                | Función                                                |
+| ------------------------------------- | ------------------------------------------------------ |
+| `listVodCategories(kind, sourceId?)`  | Categorías de películas o series con recuento          |
+| `listVod({kind, categoryId, search})` | Títulos filtrados y paginados                          |
+| `getSeriesInfo(id)`                   | Temporadas y episodios (`get_series_info`, caché 24 h) |
+| `getPlayableVod(id, episodeId?)`      | Stream de una película o de un episodio                |
+
+El catálogo se descarga en cada refresco de una fuente Xtream; si el panel no
+lo expone, las entradas VOD del M3U se mantienen como canales.
+
 ## Reproducción
 
-`getPlayable(channelId)` devuelve `{ url, kind, headers, allowLoopback }` y
-marca el canal como reciente. `kind` es `hls`, `mpegts`, `http`, `acestream` o
+`getPlayable(channelId)` devuelve `{ title, live, url, kind, headers,
+allowLoopback }` y marca el canal como reciente. `kind` es `hls`, `mpegts`, `http`, `acestream` o
 `unknown`; el proxy lo afina con el `Content-Type` real.
 
 ## Comandos Tauri
