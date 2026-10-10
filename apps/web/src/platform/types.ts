@@ -64,4 +64,6 @@ export interface AppPlatform {
   device(): Promise<DeviceInfo>;
   /** Enables hardware back interception and delivers presses to the handler. */
   onBack(handler: () => void): () => void;
+  /** Leaves the application where the platform allows it (Android, Fire TV). */
+  exit(): Promise<void>;
 }

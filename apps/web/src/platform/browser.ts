@@ -54,5 +54,6 @@ export function createBrowserPlatform(): AppPlatform {
       close: () => Promise.resolve(),
     },
     onBack: () => () => undefined,
+    exit: () => Promise.resolve(),
   };
 }

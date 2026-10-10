@@ -33,10 +33,15 @@ class NativePlugin: Plugin {
   }
 
   @objc public func getTracks(_ invoke: Invoke) throws {
-    invoke.resolve(["audio": [], "text": []])
+    invoke.resolve(["audio": [String](), "text": [String]()])
   }
 
   @objc public func setBackHandling(_ invoke: Invoke) throws {
+    invoke.resolve()
+  }
+
+  @objc public func exitApp(_ invoke: Invoke) throws {
+    // iOS applications do not exit programmatically; the home button does that.
     invoke.resolve()
   }
 

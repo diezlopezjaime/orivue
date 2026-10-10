@@ -81,8 +81,13 @@ async fn fetch_source(
             &args.url,
             FetchTextOptions {
                 headers: args.headers,
-                max_bytes: args.max_bytes.unwrap_or(MAX_FETCH_BYTES).min(MAX_FETCH_BYTES),
-                timeout: Duration::from_millis(args.timeout_ms.unwrap_or(60_000).clamp(1_000, 300_000)),
+                max_bytes: args
+                    .max_bytes
+                    .unwrap_or(MAX_FETCH_BYTES)
+                    .min(MAX_FETCH_BYTES),
+                timeout: Duration::from_millis(
+                    args.timeout_ms.unwrap_or(60_000).clamp(1_000, 300_000),
+                ),
                 policy: if args.allow_private {
                     DestinationPolicy::AllowPrivate
                 } else {
@@ -102,7 +107,11 @@ async fn open_playback(
 ) -> Result<SessionInfo, String> {
     // Only one playback session at a time: a channel change tears the previous one down.
     state.proxy.close_all();
-    state.proxy.open(request).await.map_err(|error| error.to_string())
+    state
+        .proxy
+        .open(request)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -182,9 +191,8 @@ pub fn run() {
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
-            let proxy = tauri::async_runtime::block_on(ProxyServer::start(proxy_options(
-                tauri::is_dev(),
-            )))?;
+            let proxy =
+                tauri::async_runtime::block_on(ProxyServer::start(proxy_options(tauri::is_dev())))?;
             app.manage(AppState {
                 proxy,
                 kv_dir: data_dir.join("kv"),

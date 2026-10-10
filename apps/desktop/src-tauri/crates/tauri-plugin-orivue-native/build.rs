@@ -8,6 +8,9 @@ const COMMANDS: &[&str] = &[
     "get_tracks",
     "set_back_handling",
     "get_device_info",
+    "exit_app",
+    "register_listener",
+    "remove_listener",
 ];
 
 fn main() {

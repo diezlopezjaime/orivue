@@ -63,3 +63,8 @@ pub(crate) async fn set_back_handling<R: Runtime>(
 pub(crate) async fn get_device_info<R: Runtime>(app: AppHandle<R>) -> Result<DeviceInfo> {
     app.orivue_native().get_device_info()
 }
+
+#[command]
+pub(crate) async fn exit_app<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    app.orivue_native().exit_app()
+}

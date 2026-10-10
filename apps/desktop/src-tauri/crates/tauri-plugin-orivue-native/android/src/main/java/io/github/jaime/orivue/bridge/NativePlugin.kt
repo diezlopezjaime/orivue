@@ -59,6 +59,7 @@ class BackHandlingArgs {
  * hardware back button and device information.
  */
 @TauriPlugin
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class NativePlugin(private val activity: Activity) : Plugin(activity) {
   private var webView: WebView? = null
   private var player: PlayerController? = null
@@ -190,6 +191,13 @@ class NativePlugin(private val activity: Activity) : Plugin(activity) {
       backCallback.isEnabled = args.enabled
       invoke.resolve()
     }
+  }
+
+  /** Leaves the app from the root screen, as TV launchers expect from Back. */
+  @Command
+  fun exitApp(invoke: Invoke) {
+    invoke.resolve()
+    activity.runOnUiThread { activity.finishAffinity() }
   }
 
   @Command

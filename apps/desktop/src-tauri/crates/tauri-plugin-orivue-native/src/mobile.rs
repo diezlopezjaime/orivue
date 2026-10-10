@@ -14,7 +14,7 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
     api: PluginApi<R, C>,
 ) -> crate::Result<OrivueNative<R>> {
     #[cfg(target_os = "android")]
-    let handle = api.register_android_plugin("io.github.jaime.orivue.native", "NativePlugin")?;
+    let handle = api.register_android_plugin("io.github.jaime.orivue.bridge", "NativePlugin")?;
     #[cfg(target_os = "ios")]
     let handle = api.register_ios_plugin(init_plugin_orivue_native)?;
     Ok(OrivueNative(handle))
@@ -75,6 +75,13 @@ impl<R: Runtime> OrivueNative<R> {
     pub fn set_back_handling(&self, request: BackHandlingRequest) -> crate::Result<()> {
         self.0
             .run_mobile_plugin::<Empty>("setBackHandling", request)
+            .map(|_| ())
+            .map_err(Into::into)
+    }
+
+    pub fn exit_app(&self) -> crate::Result<()> {
+        self.0
+            .run_mobile_plugin::<Empty>("exitApp", Empty {})
             .map(|_| ())
             .map_err(Into::into)
     }

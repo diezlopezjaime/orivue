@@ -71,6 +71,7 @@ export async function installTestEngine(
       close: () => Promise.resolve(),
     },
     onBack: () => () => undefined,
+    exit: () => Promise.resolve(),
   };
   const engine = new OrivueEngine({
     platform: enginePlatform,

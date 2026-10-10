@@ -48,6 +48,11 @@ impl<R: Runtime> OrivueNative<R> {
         Ok(())
     }
 
+    pub fn exit_app(&self) -> crate::Result<()> {
+        self.0.exit(0);
+        Ok(())
+    }
+
     pub fn get_device_info(&self) -> crate::Result<DeviceInfo> {
         Ok(DeviceInfo::default())
     }

@@ -46,7 +46,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::select_track,
             commands::get_tracks,
             commands::set_back_handling,
-            commands::get_device_info
+            commands::get_device_info,
+            commands::exit_app
         ])
         .setup(|app, api| {
             #[cfg(mobile)]

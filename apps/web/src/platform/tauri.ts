@@ -161,6 +161,10 @@ export async function createTauriPlatform(): Promise<AppPlatform> {
         await invoke<boolean>('close_playback', { id }).catch(() => false);
       },
     },
+    async exit() {
+      if (!info.mobile) return;
+      await invoke('plugin:orivue-native|exit_app', {}).catch(() => undefined);
+    },
     onBack(handler) {
       if (!info.mobile) return () => undefined;
       let active = true;

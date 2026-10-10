@@ -10,4 +10,7 @@ permissions = [
   "allow-get-tracks",
   "allow-set-back-handling",
   "allow-get-device-info",
+  "allow-exit-app",
+  "allow-register-listener",
+  "allow-remove-listener",
 ]
