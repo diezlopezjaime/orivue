@@ -3,16 +3,19 @@ import { persist } from 'zustand/middleware';
 import type { Channel } from './types';
 
 type ChannelFilter = 'all' | 'favorites' | 'recent';
+export type TvModePreference = 'auto' | 'on' | 'off';
+export type PlayerPreference = 'auto' | 'native' | 'web';
 
 interface AppState {
   selectedGroupId: string | undefined;
   filter: ChannelFilter;
   search: string;
   currentChannel: Channel | undefined;
-  recentIds: string[];
   volume: number;
   muted: boolean;
   aspect: 'contain' | 'cover' | 'fill';
+  tvMode: TvModePreference;
+  playerPreference: PlayerPreference;
   setGroup: (id?: string) => void;
   setFilter: (filter: ChannelFilter) => void;
   setSearch: (search: string) => void;
@@ -20,6 +23,8 @@ interface AppState {
   setVolume: (volume: number) => void;
   setMuted: (muted: boolean) => void;
   cycleAspect: () => void;
+  setTvMode: (mode: TvModePreference) => void;
+  setPlayerPreference: (preference: PlayerPreference) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -29,23 +34,15 @@ export const useAppStore = create<AppState>()(
       search: '',
       selectedGroupId: undefined,
       currentChannel: undefined,
-      recentIds: [],
       volume: 0.8,
       muted: false,
       aspect: 'contain',
+      tvMode: 'auto',
+      playerPreference: 'auto',
       setGroup: (selectedGroupId) => set({ selectedGroupId, filter: 'all' }),
       setFilter: (filter) => set({ filter, selectedGroupId: undefined }),
       setSearch: (search) => set({ search }),
-      play: (currentChannel) =>
-        set((state) => ({
-          currentChannel,
-          recentIds: currentChannel
-            ? [
-                currentChannel.id,
-                ...state.recentIds.filter((id) => id !== currentChannel.id),
-              ].slice(0, 30)
-            : state.recentIds,
-        })),
+      play: (currentChannel) => set({ currentChannel }),
       setVolume: (volume) => set({ volume: Math.min(1, Math.max(0, volume)), muted: false }),
       setMuted: (muted) => set({ muted }),
       cycleAspect: () =>
@@ -53,10 +50,18 @@ export const useAppStore = create<AppState>()(
           aspect:
             state.aspect === 'contain' ? 'cover' : state.aspect === 'cover' ? 'fill' : 'contain',
         })),
+      setTvMode: (tvMode) => set({ tvMode }),
+      setPlayerPreference: (playerPreference) => set({ playerPreference }),
     }),
     {
       name: 'orivue-preferences',
-      partialize: ({ recentIds, volume, muted, aspect }) => ({ recentIds, volume, muted, aspect }),
+      partialize: ({ volume, muted, aspect, tvMode, playerPreference }) => ({
+        volume,
+        muted,
+        aspect,
+        tvMode,
+        playerPreference,
+      }),
     },
   ),
 );

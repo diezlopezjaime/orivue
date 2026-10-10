@@ -1145,3 +1145,217 @@ a:focus-visible,
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------------------------------------------------------------- sources */
+.source-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.source-tabs button {
+  padding: 9px 14px;
+  border-radius: 999px;
+  background: #0d1016;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.source-tabs button.selected {
+  color: #090b10;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.playlist-form .xtream-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+.playlist-form select {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px;
+  background: #0d1016;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+.playlist-form code {
+  color: var(--accent2);
+}
+.file-import.inline {
+  margin-top: 0;
+  flex-wrap: wrap;
+}
+.kind-chip {
+  margin-left: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #1c2130;
+  color: #aab2c4;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.refresh-select {
+  display: block;
+  margin-top: 10px;
+  font-size: 11px;
+  color: #9da5b5;
+}
+.refresh-select select {
+  display: block;
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: #0d1016;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.notice {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #112a22;
+  color: var(--accent);
+  font-size: 12px;
+}
+.boot-error {
+  padding: 48px;
+  max-width: 560px;
+}
+.boot-error button {
+  margin-top: 16px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #090b10;
+}
+
+/* --------------------------------------------------------------- settings */
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+.settings-card {
+  padding: 20px;
+  background: #12161e;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.settings-card h2 {
+  margin: 0 0 12px;
+  font:
+    700 15px Manrope,
+    'DM Sans',
+    sans-serif;
+}
+.settings-card label {
+  display: block;
+  margin-top: 12px;
+  font-size: 12px;
+  color: #9da5b5;
+}
+.settings-card label.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #e6e9f0;
+}
+.settings-card select,
+.settings-card input[type='number'] {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px;
+  background: #0d1016;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+.settings-card p {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.settings-card dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 8px 12px;
+  font-size: 12px;
+}
+.settings-card dt {
+  color: var(--muted);
+}
+.settings-card dd {
+  margin: 0;
+}
+.live-badge em {
+  font-style: normal;
+  font-weight: 500;
+  opacity: 0.7;
+  margin-left: 8px;
+}
+
+/* ------------------------------------------------- native video (Android) */
+html.native-video,
+html.native-video body,
+html.native-video #root,
+html.native-video .player-shell,
+html.native-video .player-shell video {
+  background: transparent !important;
+}
+html.native-video .player-shell video {
+  visibility: hidden;
+}
+html.native-video .app-shell > :not(.player-shell) {
+  visibility: hidden;
+}
+
+/* ------------------------------------------------------------ TV (10 ft) */
+html[data-tv='true'] {
+  font-size: 118%;
+}
+html[data-tv='true'] body {
+  padding: 2.5vh 3vw;
+}
+html[data-tv='true'] button:focus-visible,
+html[data-tv='true'] input:focus-visible,
+html[data-tv='true'] select:focus-visible,
+html[data-tv='true'] a:focus-visible,
+html[data-tv='true'] [data-tv-focus]:focus {
+  box-shadow:
+    0 0 0 4px #090b10,
+    0 0 0 9px var(--accent) !important;
+  transform: scale(1.02);
+}
+html[data-tv='true'] .search-box,
+html[data-tv='true'] .player-hint {
+  display: none;
+}
+html[data-tv='true'] .channel-row {
+  height: 92px;
+}
+html[data-tv='true'] .nav-item,
+html[data-tv='true'] .category-panel button {
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+html[data-tv='true'] .card-actions button,
+html[data-tv='true'] .primary-button,
+html[data-tv='true'] .secondary-button {
+  min-height: 48px;
+}
+html[data-tv='true'] input[type='range'] {
+  display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .channel-main,
+  .nav-item,
+  .category-panel button,
+  .card-actions button {
+    min-height: 48px;
+  }
+  .player-hint {
+    display: none;
+  }
+}

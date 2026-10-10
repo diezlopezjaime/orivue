@@ -5,7 +5,7 @@ Aplicar después de la primera ejecución satisfactoria de CI:
 - exigir pull request con al menos una aprobación;
 - descartar aprobaciones al recibir commits nuevos;
 - exigir resolución de conversaciones;
-- exigir rama actualizada y checks `quality` de Linux y Windows;
+- exigir rama actualizada y checks `quality` de Linux y Windows, `rust` y `e2e`;
 - exigir CodeQL cuando esté disponible;
 - bloquear force-push y borrado de `main`;
 - aplicar las reglas también a administradores, con procedimiento documentado de

@@ -1,10 +1,10 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Orivue",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "io.github.jaime.orivue",
   "build": {
-    "beforeDevCommand": "pnpm --parallel --filter @orivue/server --filter @orivue/web dev",
+    "beforeDevCommand": "pnpm --filter @orivue/web dev",
     "devUrl": "http://localhost:5173",
     "beforeBuildCommand": "pnpm --filter @orivue/web build",
     "frontendDist": "../../web/dist"
@@ -16,15 +16,16 @@
         "title": "Orivue",
         "width": 1280,
         "height": 720,
-        "minWidth": 960,
-        "minHeight": 540,
+        "minWidth": 800,
+        "minHeight": 480,
         "resizable": true,
         "fullscreen": false,
-        "center": true
+        "center": true,
+        "transparent": false
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http: https: data:; media-src 'self' asset: http: https: blob:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* ws://127.0.0.1:* http://localhost:* ws://localhost:*; font-src 'self' data:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http: https: data: blob:; media-src 'self' asset: http://127.0.0.1:* http://localhost:* blob: data:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* ws://127.0.0.1:* http://localhost:* ws://localhost:* blob:; worker-src 'self' blob:; font-src 'self' data:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
     }
   },
   "bundle": {
@@ -34,7 +35,6 @@
     "shortDescription": "Reproductor IPTV local-first",
     "longDescription": "Orivue organiza y reproduce fuentes IPTV autorizadas por el usuario. No incluye canales ni contenido.",
     "copyright": "Copyright (c) 2026 Jaime and contributors",
-    "externalBin": ["binaries/orivue-service"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -46,6 +46,12 @@
       "nsis": {
         "installMode": "currentUser"
       }
+    },
+    "android": {
+      "minSdkVersion": 24
+    },
+    "iOS": {
+      "minimumSystemVersion": "17.1"
     }
   }
 }

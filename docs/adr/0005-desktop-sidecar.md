@@ -1,6 +1,6 @@
 # ADR-0005: servicio empaquetado como sidecar supervisado
 
-- Estado: aceptado; sidecar Windows validado, contenedor Tauri pendiente
+- Estado: superado por [ADR-0006](0006-portable-engine-and-rust-proxy.md); el sidecar Node se eliminó en 0.2
 - Fecha: 2026-07-18
 
 ## Contexto

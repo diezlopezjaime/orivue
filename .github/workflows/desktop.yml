@@ -1,39 +1,50 @@
-name: Desktop smoke build
+name: Desktop
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
     paths:
-      - apps/desktop/**
-      - apps/server/**
-      - apps/web/**
+      - apps/**
+      - packages/**
       - pnpm-lock.yaml
       - .github/workflows/desktop.yml
   pull_request:
     paths:
-      - apps/desktop/**
-      - apps/server/**
-      - apps/web/**
+      - apps/**
+      - packages/**
       - pnpm-lock.yaml
       - .github/workflows/desktop.yml
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: desktop-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  check:
-    name: Tauri check (${{ matrix.os }})
+  build:
+    name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 35
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-22.04]
+        include:
+          - name: Linux x64
+            os: ubuntu-22.04
+            args: ''
+          - name: Windows x64
+            os: windows-latest
+            args: ''
+          - name: macOS arm64
+            os: macos-latest
+            args: '--target aarch64-apple-darwin'
+          - name: macOS x64
+            os: macos-latest
+            args: '--target x86_64-apple-darwin'
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -42,17 +53,42 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
       - name: Dependencias Tauri de Linux
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libgtk-3-dev
       - run: pnpm install --frozen-lockfile
-      - name: Preparar sidecar del target
-        run: pnpm --filter @orivue/desktop prepare:sidecar
-      - name: Formato Rust
-        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check
       - name: Comprobar Rust
         run: pnpm --filter @orivue/desktop desktop:check
-      - name: Build sin empaquetar
-        run: pnpm --filter @orivue/desktop desktop:build:ci
+      - name: Build e instaladores
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: pnpm tauri
+          args: ${{ matrix.args }}
+          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('Orivue {0}', github.ref_name) || '' }}
+          releaseBody: Instaladores sin firma de una versión preliminar. Consulta CHANGELOG.md y docs/platforms.md antes de instalar.
+          releaseDraft: false
+          prerelease: true
+      - name: Subir artefactos
+        uses: actions/upload-artifact@v4
+        with:
+          name: orivue-desktop-${{ matrix.os }}${{ matrix.args && '-' || '' }}${{ matrix.args && (contains(matrix.args, 'aarch64') && 'arm64' || 'x64') || '' }}
+          path: |
+            apps/desktop/src-tauri/target/**/release/bundle/deb/*.deb
+            apps/desktop/src-tauri/target/**/release/bundle/rpm/*.rpm
+            apps/desktop/src-tauri/target/**/release/bundle/appimage/*.AppImage
+            apps/desktop/src-tauri/target/**/release/bundle/nsis/*.exe
+            apps/desktop/src-tauri/target/**/release/bundle/msi/*.msi
+            apps/desktop/src-tauri/target/**/release/bundle/dmg/*.dmg
+          if-no-files-found: warn
+          retention-days: 14

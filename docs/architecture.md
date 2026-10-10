@@ -1,69 +1,56 @@
 # Arquitectura
 
-Orivue es una aplicación local-first en un monorepo pnpm. Se evita distribuir
-funcionalidad como microservicios: existe un único servicio local y una única
-sesión de reproducción activa por defecto.
+Orivue es una aplicación local-first en un monorepo pnpm. Desde 0.2 no existe
+ningún servicio HTTP local: el dominio corre dentro de la webview y las
+operaciones de red privilegiadas viven en el proceso Rust de Tauri. Un único
+proyecto Tauri produce escritorio, Android, Fire TV e iOS.
 
 ## Componentes
 
-| Ruta                        | Responsabilidad                                               |
-| --------------------------- | ------------------------------------------------------------- |
-| `apps/web`                  | UI React/Vite, navegación TV, virtualización y reproductor    |
-| `apps/server`               | API Fastify loopback, persistencia y coordinación de sesiones |
-| `apps/desktop`              | Contenedor Tauri 2 y supervisión del sidecar                  |
-| `packages/core`             | Entidades y contratos de dominio sin infraestructura          |
-| `packages/m3u-parser`       | Lectura tolerante y acotada de M3U                            |
-| `packages/xmltv-parser`     | Lectura incremental y normalización temporal XMLTV            |
-| `packages/stream-resolvers` | Resolutores HLS, HTTP y Ace Stream opcional                   |
-| `packages/player`           | Ciclo de vida de reproducción independiente de la UI          |
-| `fixtures`                  | Datos sintéticos reproducibles y sin contenido protegido      |
-
-La lista real de paquetes puede crecer solo cuando exista una responsabilidad
-compartida concreta; no se crean paquetes como abstracciones vacías.
+| Ruta                                                       | Responsabilidad                                                 |
+| ---------------------------------------------------------- | --------------------------------------------------------------- |
+| `apps/web`                                                 | UI React/Vite, navegación TV, reproductor y adaptadores         |
+| `apps/desktop/src-tauri`                                   | Shell Tauri 2: comandos, proxy y plugin nativo                  |
+| `apps/desktop/src-tauri/crates/stream-proxy`               | Proxy loopback de streams (Rust, sin dependencia de Tauri)      |
+| `apps/desktop/src-tauri/crates/tauri-plugin-orivue-native` | Media3 en Android/Fire TV, botón atrás, info de dispositivo     |
+| `apps/desktop/src-tauri/gen/android`                       | Proyecto Gradle generado y versionado (banner Fire TV, firma)   |
+| `packages/engine`                                          | Fuentes, importación, IndexedDB, biblioteca, EPG, reproducibles |
+| `packages/xtream`                                          | Xtream Codes: detección, URLs, cuenta, redacción                |
+| `packages/core`                                            | Entidades y utilidades sin infraestructura                      |
+| `packages/m3u-parser`                                      | Lectura tolerante y acotada de M3U                              |
+| `packages/xmltv-parser`                                    | Lectura incremental y normalización temporal XMLTV              |
+| `packages/stream-resolvers`                                | Resolutores HLS, HTTP y Ace Stream opcional                     |
+| `fixtures`                                                 | Datos sintéticos reproducibles y sin contenido protegido        |
 
 ## Flujo principal
 
-1. La UI solicita importar una fuente autorizada.
-2. El servicio valida esquema, destino, redirecciones, tamaño y tiempo.
-3. El parser produce entradas y avisos sin retener innecesariamente todo el
-   archivo; el servicio prepara una revisión en transacción.
-4. Solo una revisión válida sustituye a la anterior. Los IDs estables preservan
-   favoritos y personalizaciones.
-5. Al reproducir, el servicio crea una sesión ligada a un canal persistido. El
-   cliente no proporciona una URL libre al proxy.
-6. El resolutor devuelve un destino reproducible y una función de limpieza. Un
-   cambio cancela solicitudes y termina la sesión previa.
+1. La UI pide al engine añadir una fuente (URL, cuenta Xtream o archivo).
+2. El engine construye la URL de lista y guía y la descarga a través de la
+   plataforma: en Tauri el comando `fetch_source` (Rust) aplica límites de
+   tamaño, tiempo y redirecciones y bloquea destinos privados; en el navegador
+   se usa `fetch` (CORS) o el relay de desarrollo de Vite.
+3. El parser produce canales y avisos; la revisión se escribe de una vez en
+   IndexedDB y solo sustituye a la anterior si es válida.
+4. Favoritos, recientes, ocultos, nombres y asociaciones EPG se guardan en un
+   documento clave-valor (archivo JSON en Tauri, `localStorage` en navegador).
+5. Al reproducir, el engine devuelve la URL y cabeceras del canal. En Tauri,
+   `open_playback` abre una sesión en el proxy loopback que valida el destino,
+   lo sondea y devuelve una URL `http://127.0.0.1:<puerto>/s/<sesión>/<token>/r?u=…`.
+6. El reproductor elige backend: Media3 nativo (Android/Fire TV, con la URL
+   original), `mpegts.js`, `hls.js` o `<video>` según el tipo detectado y el
+   `Content-Type` real.
+7. Cambiar o cerrar un canal cierra la sesión y cancela las descargas.
 
 ## Persistencia
 
-SQLite reside en el directorio de datos de la aplicación, nunca en el directorio
-instalable. Migraciones versionadas avanzan el esquema. Importaciones usan una
-transacción y tablas/estado de preparación para no destruir la última revisión
-útil si la red o el parser fallan.
+IndexedDB guarda una revisión de canales por fuente, los nombres de canales
+XMLTV y los programas (índice `[fuente, canal, inicio]`) acotados por el
+horizonte configurado. El almacén clave-valor guarda fuentes (con credenciales),
+biblioteca y ajustes. En Tauri vive en el directorio de datos de la app; en
+navegador, en el origen de la página.
 
-Las URLs de fuentes pueden contener secretos. El servicio las necesita para
-actualizar, pero nunca las incluye sin redactar en logs, errores o diagnósticos.
-El cifrado con almacén nativo no forma parte del alcance inicial; el archivo se
-protege con permisos de la cuenta del sistema operativo.
+## Reproducción por plataforma
 
-## Procesos de escritorio
-
-En desarrollo, web y servicio se ejecutan mediante pnpm y Tauri carga Vite. En
-distribución, Tauri incluye `orivue-service-<target-triple>` como sidecar. Tauri
-genera token local y directorio de datos, arranca el servicio con bind loopback,
-lee un evento JSON `ready` y lo detiene al salir. El sidecar no se expone a LAN.
-
-El contrato exacto está en `apps/desktop/README.md` y la decisión en
-`docs/adr/0005-desktop-sidecar.md`.
-
-## Decisiones registradas
-
-- [ADR-0001: monorepo local-first](adr/0001-monorepo-local-first.md)
-- [ADR-0002: identidad estable de canales](adr/0002-stable-channel-identities.md)
-- [ADR-0003: seguridad loopback](adr/0003-loopback-security.md)
-- [ADR-0004: resolutores separados](adr/0004-stream-resolvers.md)
-- [ADR-0005: servicio sidecar supervisado](adr/0005-desktop-sidecar.md)
-
-Cada ADR describe contexto y compromisos. Una decisión nueva que amplíe la
-superficie de red, cambie el almacenamiento de secretos o rompa contratos
-públicos necesita otro ADR.
+Consulta [platforms.md](platforms.md). La decisión y sus consecuencias están en
+[ADR-0006](adr/0006-portable-engine-and-rust-proxy.md); ADR-0005 (sidecar Node)
+queda superado.

@@ -5,6 +5,7 @@ const links = [
   { to: '/', icon: 'live' as const, label: 'En directo' },
   { to: '/guide', icon: 'guide' as const, label: 'Guía' },
   { to: '/lists', icon: 'lists' as const, label: 'Mis listas' },
+  { to: '/settings', icon: 'settings' as const, label: 'Ajustes' },
 ];
 
 export function Sidebar() {
@@ -34,7 +35,7 @@ export function Sidebar() {
       </nav>
       <div className="sidebar-foot">
         <span className="status-dot" />
-        Servicio local
+        Local y privado
       </div>
     </aside>
   );

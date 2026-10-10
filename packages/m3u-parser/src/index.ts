@@ -26,6 +26,8 @@ export interface M3uWarning {
 export interface M3uParseResult {
   readonly channels: Channel[];
   readonly warnings: M3uWarning[];
+  /** EPG URL advertised by the `#EXTM3U url-tvg="..."` / `x-tvg-url` header attribute, if any. */
+  readonly epgUrl?: string;
 }
 
 interface PendingChannel {
@@ -63,6 +65,7 @@ export function parseM3u(input: string, options: M3uParseOptions = {}): M3uParse
   const maxLineLength = options.maxLineLength ?? DEFAULT_MAX_LINE_LENGTH;
   let pending: PendingChannel | undefined;
   let foundHeader = false;
+  let epgUrl: string | undefined;
 
   const lines = input.replace(/^\uFEFF/, '').split(/\r?\n|\r/);
   for (let index = 0; index < lines.length; index += 1) {
@@ -83,6 +86,9 @@ export function parseM3u(input: string, options: M3uParseOptions = {}): M3uParse
 
     if (/^#EXTM3U(?:\s|$)/i.test(line)) {
       foundHeader = true;
+      const attributes = parseAttributes(line.slice('#EXTM3U'.length));
+      const advertised = (attributes['url-tvg'] ?? attributes['x-tvg-url'] ?? '').split(',')[0];
+      if (advertised && isHttpUrl(advertised.trim())) epgUrl = advertised.trim();
       continue;
     }
     if (/^#EXTINF:/i.test(line)) {
@@ -155,7 +161,16 @@ export function parseM3u(input: string, options: M3uParseOptions = {}): M3uParse
     warnings.unshift(
       safeWarning(1, 'missing-header', 'The EXTM3U header was missing; parsing continued.'),
     );
-  return { channels, warnings };
+  return { channels, warnings, ...(epgUrl ? { epgUrl } : {}) };
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 function parseExtInf(line: string, lineNumber: number): PendingChannel {

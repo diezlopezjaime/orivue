@@ -21,7 +21,9 @@ pnpm install
 pnpm verify
 ```
 
-Node 22+ y pnpm 11 son necesarios. Rust solo hace falta para `apps/desktop`.
+Node 22+ y pnpm 11 son necesarios. Rust hace falta para `apps/desktop` (todas
+las plataformas); Android requiere además SDK, NDK y Java 17, e iOS un macOS
+con Xcode y `xcodegen`.
 
 ## Flujo recomendado
 
@@ -47,11 +49,13 @@ pnpm build
 pnpm test:e2e       # si el cambio afecta flujos de interfaz
 ```
 
-Para escritorio:
+Para Rust y las apps:
 
 ```bash
+cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml -p orivue-stream-proxy
 pnpm --filter @orivue/desktop desktop:check
 pnpm --filter @orivue/desktop desktop:build
+pnpm --filter @orivue/desktop android:build   # con ANDROID_HOME y NDK_HOME
 ```
 
 Indica “no ejecutado” junto con la causa si tu entorno no permite una prueba.
@@ -61,12 +65,15 @@ No sustituyas una prueba pendiente por una afirmación de éxito.
 
 - TypeScript estricto, Prettier y ESLint mandan sobre preferencias personales.
 - API y errores no deben reflejar URLs sensibles.
-- El servicio sigue escuchando en `127.0.0.1`; ampliar exposición requiere ADR y
-  revisión de seguridad.
+- El proxy sigue escuchando en `127.0.0.1` y solo sirve URLs de una sesión;
+  ampliar exposición requiere ADR y revisión de seguridad.
+- El engine no puede depender de APIs de Node: debe funcionar en cualquier
+  webview.
 - Los resolutores implementan una interfaz común y deben poder cancelar/limpiar
   sesiones.
 - Un parser tolera entradas aisladas defectuosas, pero conserva límites globales.
-- Los cambios de esquema incluyen migración hacia delante y prueba transaccional.
+- Los cambios de esquema de IndexedDB incluyen migración hacia delante en
+  `openEngineStorage` y prueba de reapertura.
 
 ## Pull requests
 

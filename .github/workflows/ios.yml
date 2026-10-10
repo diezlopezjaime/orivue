@@ -1,0 +1,71 @@
+name: iOS
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - apps/**
+      - packages/**
+      - pnpm-lock.yaml
+      - .github/workflows/ios.yml
+  pull_request:
+    paths:
+      - apps/**
+      - packages/**
+      - pnpm-lock.yaml
+      - .github/workflows/ios.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulator:
+    name: iOS (simulador, sin firma)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - run: brew install xcodegen
+      - run: pnpm install --frozen-lockfile
+      - name: Generar proyecto Xcode
+        run: pnpm --filter @orivue/desktop tauri ios init --ci
+      - name: Ajustar Info.plist (ATS para loopback y HTTP)
+        run: node apps/desktop/scripts/patch-ios-project.mjs
+      - name: Compilar para simulador (sin firma)
+        run: pnpm --filter @orivue/desktop tauri ios build --debug --target aarch64-sim --no-sign --ci
+      - name: Empaquetar la app
+        run: |
+          APP=$(find apps/desktop/src-tauri/gen/apple -type d -name '*.app' -path '*aarch64-sim*' | head -1)
+          if [ -z "$APP" ]; then APP=$(find apps/desktop/src-tauri/gen/apple -type d -name 'Orivue.app' | head -1); fi
+          echo "App: $APP"
+          test -n "$APP"
+          mkdir -p out
+          ditto -c -k --keepParent "$APP" out/orivue-ios-simulator.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orivue-ios-simulator
+          path: out/orivue-ios-simulator.zip
+          retention-days: 14
+      - name: Publicar en la release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          files: out/orivue-ios-simulator.zip

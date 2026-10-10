@@ -5,265 +5,192 @@
 </p>
 
 Orivue es un reproductor y organizador IPTV local-first, libre y pensado para
-televisión. Importa fuentes M3U/M3U8 autorizadas por el usuario, organiza
-canales y reproduce HLS desde una interfaz React manejable con teclado, ratón o
-mando. No proporciona canales, listas, suscripciones ni contenido.
+televisión, móvil y ordenador. Importa fuentes M3U/M3U8, cuentas Xtream Codes
+o archivos locales que el usuario tiene derecho a usar, organiza canales con
+guía XMLTV y reproduce MPEG-TS y HLS desde una interfaz React manejable con
+mando, teclado, ratón o pantalla táctil. No proporciona canales, listas,
+suscripciones ni contenido.
 
 ![Interfaz original de Orivue con categorías y canales ficticios](docs/orivue-interface.png)
 
 > **Nombre provisional:** “Orivue” puede cambiar antes de 1.0. No existe
 > afiliación con TiviMate, Ace Stream ni sus fabricantes.
 
-## Estado actual
+## Plataformas
 
-La rama de desarrollo corresponde a `0.1.0`, una **preversión**. El MVP se está
-validando antes de una publicación estable:
+Un único proyecto Tauri 2 genera todas las aplicaciones. El detalle de formatos,
+instalación y estado de validación está en [docs/platforms.md](docs/platforms.md).
 
-| Área                                                  | Estado                                                                         |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Monorepo TypeScript, parser M3U, servicio local y web | Implementado en código                                                         |
-| Listas, grupos, búsqueda, favoritos y recientes       | Implementado en código                                                         |
-| Reproducción HLS y fixtures legales                   | Implementado; depende de compatibilidad del stream/navegador                   |
-| XMLTV/EPG                                             | Implementado en el alcance descrito en el changelog                            |
-| Ace Stream                                            | Adaptador opcional; validación simulada, no validado con un motor físico       |
-| Tauri 2                                               | Configurado; sidecar Windows probado, build nativo pendiente por falta de MSVC |
-| GitHub Actions y releases                             | Configurados; no ejecutados hasta publicar el repositorio                      |
-| Firma de instaladores                                 | No configurada                                                                 |
+| Plataforma    | Artefacto                   | Reproductor                             | Estado                                    |
+| ------------- | --------------------------- | --------------------------------------- | ----------------------------------------- |
+| Linux         | `.deb`, `.rpm`, `.AppImage` | Web (mpegts.js, hls.js)                 | Compila y pasa tests; probado en Linux    |
+| Windows       | `.exe`, `.msi`              | Web (WebView2)                          | Compila en CI; sin prueba manual          |
+| macOS         | `.dmg`                      | Web (WebKit: HLS nativo, mpegts.js)     | Compila en CI; sin prueba manual          |
+| Android 7+    | `.apk`                      | Nativo Media3/ExoPlayer, web de reserva | Compila en CI; no validado en dispositivo |
+| Fire TV Stick | mismo `.apk` (sideload)     | Nativo Media3/ExoPlayer, web de reserva | Compila en CI; no validado en dispositivo |
+| iOS 17.1+     | `.app` de simulador         | Web (HLS nativo, mpegts.js)             | Compila en CI macOS; no validado          |
 
-Consulta [CHANGELOG.md](CHANGELOG.md) para el alcance exacto y las limitaciones
-conocidas. Un elemento presente en el código no debe interpretarse como
-validado en todas las plataformas.
+“Compila en CI” significa que el workflow produce el artefacto. No se afirma
+que funcione en un dispositivo hasta que exista una prueba manual anotada en
+[CHANGELOG.md](CHANGELOG.md).
+
+## Qué hace
+
+- **Fuentes:** URL M3U/M3U8/m3u_plus (`tvg-id`, `tvg-name`, `tvg-logo`,
+  `group-title`, `#EXTVLCOPT`, cabeceras `|User-Agent=`), cuentas Xtream Codes
+  (host, usuario y contraseña, o una URL `get.php` pegada tal cual) y archivos
+  locales. Las URL `url-tvg` de la cabecera se usan como guía automáticamente.
+- **Biblioteca:** categorías, búsqueda, favoritos, recientes, canales y grupos
+  ocultos, nombres personalizados, refresco automático configurable.
+- **Guía:** XMLTV con ahora/siguiente y línea temporal; asociación por
+  `tvg-id`, por nombre o manual.
+- **Reproducción:** MPEG-TS directo (`output=ts`), HLS, MP4/MKV progresivo y
+  `acestream://` a través de un motor local opcional. En Android y Fire TV el
+  reproductor nativo decodifica MP2, AC-3 y MPEG-2; en el resto de plataformas
+  la webview decodifica H.264/AAC.
+- **Privacidad:** todo se guarda en el dispositivo. Las credenciales se
+  redactan en pantalla, errores y registros. No hay telemetría.
 
 ## Principios
 
-- **Local-first y privado:** base de datos y preferencias permanecen en el
-  equipo; no hay telemetría por defecto.
-- **Seguro por defecto:** API en `127.0.0.1`, origen controlado, credenciales
-  redactadas y proxy limitado a streams de listas importadas.
-- **Escalable:** importación incremental, SQLite indexado y listas virtualizadas.
-- **Extensible:** resolutores HLS, HTTP y Ace Stream separados.
-- **Legal:** Orivue solo se debe usar con fuentes y emisiones que el usuario
+- **Local-first y privado:** sin servidor, sin cuenta, sin sincronización.
+- **Seguro por defecto:** el proxy de streams escucha solo en `127.0.0.1`, exige
+  un token por ejecución, solo sirve URLs de la sesión abierta y bloquea
+  destinos de red privada salvo que el usuario lo permita.
+- **Portátil:** el dominio es TypeScript sin dependencias de Node y corre en
+  cualquier webview; las operaciones de red privilegiadas están en Rust.
+- **Legal:** Orivue solo debe usarse con fuentes y emisiones que el usuario
   tenga derecho a reproducir.
+
+## Arquitectura
+
+```text
+apps/web (React + Vite)
+   │ llama en proceso a
+   ▼
+packages/engine  ── importación M3U/Xtream/XMLTV, IndexedDB, favoritos, EPG
+   │ plataforma (fetch acotado, almacén clave-valor, sesiones de reproducción)
+   ▼
+apps/desktop/src-tauri (Rust)
+   ├── crates/stream-proxy ─ proxy loopback con token y lista de orígenes
+   └── crates/tauri-plugin-orivue-native ─ Media3 (Android/Fire TV), iOS
+```
+
+Decisiones en [docs/architecture.md](docs/architecture.md),
+[docs/adr](docs/adr) (la vigente es ADR-0006) y la API del engine en
+[docs/api.md](docs/api.md).
 
 ## Requisitos
 
-- Node.js 22 o posterior (la versión recomendada está en `.nvmrc`).
-- Corepack y pnpm 11.9.0.
-- Para escritorio: [prerrequisitos de Tauri 2](https://v2.tauri.app/start/prerequisites/),
-  Rust estable y las bibliotecas nativas de la plataforma.
+- Node.js 22 o posterior (`.nvmrc`), Corepack y pnpm 11.
+- Rust estable y los [prerrequisitos de Tauri 2](https://v2.tauri.app/start/prerequisites/)
+  para escritorio.
+- Android Studio o SDK + NDK y Java 17 para Android/Fire TV.
+- macOS con Xcode y `xcodegen` para iOS.
 
 ```bash
 corepack enable
 pnpm install --frozen-lockfile
 ```
 
-Conserva `pnpm-lock.yaml` en los commits para instalaciones reproducibles.
-
 ## Desarrollo
 
-Desde la raíz:
-
 ```bash
-pnpm install
-pnpm dev
+pnpm dev          # web en http://localhost:5173 con relay de desarrollo
+pnpm verify       # formato, lint, tipos, tests y build
+pnpm test:e2e     # Playwright contra la build de la web
 ```
 
-La web usa normalmente `http://localhost:5173` y la API solamente loopback. Los
-puertos efectivos aparecen en la salida de desarrollo. Para ejecutar piezas
-por separado:
+En el navegador el motor funciona igual que en las apps; el servidor de Vite
+incluye un relay `/__orivue/*` para esquivar CORS solo en desarrollo.
 
-```bash
-pnpm --filter @orivue/server dev
-pnpm --filter @orivue/web dev
-```
-
-No pegues en capturas, terminales compartidos o issues URLs de listas: a menudo
-incluyen usuario, contraseña o token en el query string.
-
-## Primera prueba con datos ficticios
-
-1. Arranca servicio y web con `pnpm dev`.
-2. Abre la dirección que muestra Vite.
-3. Importa `fixtures/sample.m3u` si la interfaz admite archivo, o sirve la
-   carpeta `fixtures` por HTTP local y usa su URL.
-4. Selecciona un canal de demostración y comprueba los estados del reproductor.
-5. Si cargas la guía, utiliza `fixtures/sample.xml`.
-
-Los fixtures del repositorio son sintéticos. Orivue no descarga listas públicas
-de Internet ni comprueba masivamente los canales durante una importación.
-
-## Importar M3U/M3U8
-
-En **Listas → Añadir lista**, asigna un nombre y proporciona una URL HTTPS/HTTP
-autorizada o un archivo local cuando esa opción esté disponible. Una
-actualización válida sustituye la versión anterior de forma transaccional; si
-falla, la versión útil previa se conserva. Los identificadores estables ayudan
-a mantener favoritos y personalizaciones.
-
-La aplicación interpreta `#EXTM3U`, `#EXTINF`, `tvg-id`, `tvg-name`,
-`tvg-logo`, `group-title` y encabezados representables de forma segura. Las
-entradas defectuosas se aíslan y se notifican sin convertir los datos restantes
-en válidos automáticamente.
-
-## XMLTV y EPG
-
-Añade la URL XMLTV desde la configuración de guía. La asociación principal usa
-`tvg-id`; la coincidencia por nombre es una alternativa prudente y puede
-corregirse manualmente. Fechas XMLTV se normalizan conservando su zona horaria.
-Fuentes enormes o no confiables están sujetas a límites de tamaño y tiempo.
-
-## Ace Stream opcional
-
-Orivue funciona sin Ace Stream. Si ya tienes un motor compatible instalado:
-
-1. Configura su endpoint **local** en Ajustes → Integraciones.
-2. Comprueba el estado antes de abrir un canal `acestream://`.
-3. Orivue solicitará una URL HTTP local y cerrará la sesión al cambiar de canal.
-
-Orivue no incluye, descarga ni redistribuye Ace Stream Engine. El adaptador no
-elude DRM, autenticación, pagos ni controles de acceso. En esta versión se ha
-probado con dobles/simuladores; la interoperabilidad con instalaciones reales
-queda pendiente de validación física.
-
-## Calidad y build de producción
-
-```bash
-pnpm format:check
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
-pnpm verify
-```
-
-`pnpm verify` no incluye automáticamente pruebas E2E que requieran navegador:
-
-```bash
-pnpm test:e2e
-```
-
-No interpretes la mera existencia de estos comandos como un resultado exitoso;
-los resultados ejecutados se informan en la entrega o en GitHub Actions.
-
-## Escritorio con Tauri 2
-
-Instala primero los prerrequisitos de Tauri y luego:
+Escritorio, Android e iOS:
 
 ```bash
 pnpm --filter @orivue/desktop desktop:dev
 pnpm --filter @orivue/desktop desktop:build
+pnpm --filter @orivue/desktop android:dev      # requiere ANDROID_HOME y NDK_HOME
+pnpm --filter @orivue/desktop android:build    # APK universal
+pnpm --filter @orivue/desktop ios:init && node apps/desktop/scripts/patch-ios-project.mjs
+pnpm --filter @orivue/desktop ios:dev          # solo macOS
 ```
 
-Windows es la plataforma inicial. Linux y macOS se consideran experimentales.
-El build de distribución requiere preparar el servicio como sidecar nativo;
-consulta [apps/desktop/README.md](apps/desktop/README.md). El proceso de release
-crea artefactos sin firma: Windows SmartScreen y los mecanismos equivalentes
-pueden advertir al usuario.
+Pruebas Rust del proxy:
 
-El sidecar Windows se empaquetó y respondió a `/api/health` con token efímero.
-Rust 1.97.1 generó y fijó `Cargo.lock`; `cargo check` alcanzó la compilación de
-dependencias y se detuvo porque falta el linker `link.exe` de MSVC. Por tanto,
-la capa Rust y el instalador siguen pendientes de validación nativa.
-
-## Arquitectura
-
-```text
-apps/web (React + Vite)
-        │ contratos tipados / token efímero
-        ▼
-apps/server (Fastify, solo 127.0.0.1)
-        ├── SQLite y migraciones
-        ├── importadores M3U/XMLTV
-        ├── proxy de sesiones restringido
-        └── resolutores HLS / HTTP / Ace opcional
-        ▲
-apps/desktop (Tauri 2, supervisa el servicio empaquetado)
-
-packages/* (dominio, parsers, reproductor y contratos compartidos)
+```bash
+cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml -p orivue-stream-proxy
 ```
 
-Las decisiones y límites están en [docs/architecture.md](docs/architecture.md),
-[docs/api.md](docs/api.md) y [docs/adr](docs/adr).
+No pegues en capturas, terminales compartidos o issues URLs de listas: suelen
+incluir usuario, contraseña o token. Para probar con tus propias credenciales,
+guárdalas en `.env.local` (ignorado por git) y nunca en fixtures ni tests.
+
+## Primera prueba con datos ficticios
+
+1. `pnpm dev` y abre la dirección que muestra Vite.
+2. En **Mis listas → Añadir lista → Archivo local** importa `fixtures/sample.m3u`,
+   o sirve `fixtures/` con `node scripts/serve-fixtures.mjs` y usa su URL.
+3. Reproduce un canal de demostración y comprueba los estados del reproductor.
+4. `fixtures/sample.xml` sirve como guía XMLTV.
+
+## Xtream Codes
+
+Pega la URL `http://panel/get.php?username=…&password=…&type=m3u_plus&output=ts`
+en el formulario de URL o rellena host, usuario y contraseña en la pestaña
+Xtream. Orivue valida la cuenta en `player_api.php`, descarga la lista
+`m3u_plus`, carga la guía de `xmltv.php` y muestra estado, caducidad y
+conexiones. Elige `MPEG-TS` (recomendado) o `HLS` como formato de stream.
+
+## Ace Stream opcional
+
+Orivue funciona sin Ace Stream. Si hay un motor en `127.0.0.1:6878`, los
+canales `acestream://<id>` se resuelven a `/ace/getstream?id=` a través del
+proxy loopback. No se incluye, descarga ni redistribuye el motor y no se ha
+validado con una instalación real.
 
 ## Privacidad y seguridad
 
-- El servicio escucha exclusivamente en loopback por defecto; no habilites LAN.
-- Solo se permiten orígenes locales previstos y sesiones autenticadas.
-- El proxy no acepta un destino remoto libre: deriva destinos de canales
-  importados y sesiones vigentes.
-- URLs y cabeceras sensibles se redactan en logs y diagnósticos.
-- No hay telemetría ni sincronización remota por defecto.
-- La base SQLite contiene metadatos y puede contener URLs secretas; protege tu
-  cuenta de usuario y no compartas el archivo.
+- Sin servicio HTTP local: la UI llama al motor en proceso y a comandos Tauri.
+- El proxy de streams no acepta destinos arbitrarios: solo URLs de la sesión
+  (canal, redirecciones y segmentos de su manifiesto), con token por ejecución.
+- Destinos loopback y de red privada se bloquean salvo Ace Stream o la opción
+  “permitir red local” de Ajustes.
+- Listas y guías se descargan con límites de tamaño y tiempo desde Rust.
+- Las credenciales Xtream se guardan en el almacén local de la app sin cifrado
+  adicional; protege tu cuenta de usuario y no compartas el directorio de datos.
+- Android permite tráfico HTTP en claro porque las fuentes IPTV suelen serlo.
 
-Lee el [modelo de amenazas](docs/security-model.md) y [SECURITY.md](SECURITY.md).
-Una interfaz loopback reduce la exposición, pero no equivale a una frontera de
-confianza absoluta frente a malware local o a una cuenta comprometida.
+Lee [docs/security-model.md](docs/security-model.md) y [SECURITY.md](SECURITY.md).
 
 ## Solución de problemas
 
-**La lista no se importa.** Comprueba que la URL sea accesible desde el mismo
-equipo, que devuelva M3U y que no haya expirado. No publiques la URL completa.
-Revisa los límites de descarga y las redirecciones.
+**La lista no se importa.** Comprueba que la URL sea accesible desde el
+dispositivo, devuelva M3U y no haya caducado. En el navegador sin Tauri, CORS
+puede impedir la descarga: usa `pnpm dev` o la app de escritorio.
 
-**La web dice que la API no está disponible.** Inicia `@orivue/server`, confirma
-el puerto mostrado y descarta otro proceso ocupándolo. No cambies el bind a
-`0.0.0.0` como solución rápida.
+**El canal no reproduce en escritorio o iOS.** El reproductor web solo decodifica
+H.264/AAC; con MP2, AC-3 o MPEG-2 verás un aviso de códec. Usa Android/Fire TV
+o pide HLS al proveedor. Un token caducado o un origen caído muestran el error
+HTTP del proveedor.
 
-**El canal no reproduce.** HLS puede fallar por codec, CORS del proveedor, token
-caducado o disponibilidad del origen. Prueba el fixture local para separar un
-problema de Orivue de uno del proveedor.
+**No aparece EPG.** Verifica `tvg-id`, el horizonte de guía (Ajustes) y la fecha
+de la última actualización de la guía en Mis listas.
 
-**No aparece EPG.** Verifica `tvg-id`, rango temporal, zona horaria y fecha de la
-última actualización. La coincidencia por nombre es deliberadamente cauta.
-
-**Ace Stream aparece desconectado.** El motor es externo: confirma que está
-encendido y que el endpoint configurado es loopback. Orivue no lo instala.
-
-**Tauri no compila.** Ejecuta `rustc --version`, instala los prerrequisitos de
-Tauri 2 y comprueba que el sidecar esperado exista. Consulta el README de
-escritorio para los nombres por target triple.
+**El mando no mueve el foco.** Activa el modo televisión en Ajustes; en Fire TV
+se detecta automáticamente.
 
 ## Limitaciones conocidas
 
-- El nombre público aún no es definitivo.
-- No hay ejecutables firmados ni notarizados.
-- El build Tauri nativo de Windows requiere instalar MSVC Build Tools con la
-  carga de C++; el sidecar sí está validado de forma independiente.
-- El runtime Node 22 incluido usa `node:sqlite`, aún marcado como experimental
-  por Node; se revisará su estabilidad antes de 1.0.
-- Windows es el único objetivo de soporte inicial; otros sistemas requieren
-  validación real.
-- Ace Stream no se ha validado con un motor físico en el entorno inicial.
-- Los proveedores controlan codecs, CORS y disponibilidad; Orivue no puede
-  garantizar que un stream autorizado sea reproducible.
-- El almacenamiento de secretos depende de las protecciones de la cuenta local;
-  el cifrado con almacenes nativos se mantiene en el roadmap.
-
-## Roadmap
-
-- **v0.1:** monorepo, M3U, grupos, búsqueda, favoritos/recientes, HLS, servicio
-  loopback, fixtures, tests y CI.
-- **v0.2:** XMLTV completo, ahora/después, guía temporal y personalización.
-- **v0.3:** API estable de resolutores, Ace Stream opcional y diagnósticos.
-- **v0.4:** Tauri pulido, mando, instaladores, accesibilidad y rendimiento.
-- **1.0:** nombre e interfaces estables, builds firmados y matriz de plataformas
-  validada.
-
-El orden puede cambiar según resultados de seguridad y pruebas.
+- Ningún instalador está firmado ni notarizado.
+- Android, Fire TV e iOS solo se han compilado en CI; falta validación física.
+- iOS no incluye un reproductor nativo: TS con códecs fuera de H.264/AAC no se
+  reproduce.
+- Ace Stream no se ha probado con un motor real.
+- Los proveedores controlan códecs y disponibilidad; Orivue no puede garantizar
+  que un stream autorizado sea reproducible.
 
 ## Contribuir
 
-Se agradecen issues y pull requests. Empieza por [CONTRIBUTING.md](CONTRIBUTING.md)
-y [docs/good-first-issues.md](docs/good-first-issues.md). No se exige CLA: al
+Empieza por [CONTRIBUTING.md](CONTRIBUTING.md) y
+[docs/good-first-issues.md](docs/good-first-issues.md). No se exige CLA: al
 contribuir aceptas publicar tu aportación bajo la licencia MIT del proyecto.
-
-## Uso responsable y licencia
-
-Utiliza Orivue exclusivamente con listas, canales y emisiones que hayas creado,
-que sean de dominio público o para las que tengas autorización. El usuario es
-responsable de cumplir las leyes y condiciones aplicables. No solicites ayuda
-para eludir DRM, pagos, autenticación o restricciones de acceso.
-
-Código publicado bajo [licencia MIT](LICENSE). Copyright (c) 2026 Jaime and
-contributors.

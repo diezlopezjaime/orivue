@@ -54,4 +54,13 @@ https://example.test/orphan.ts`);
     // Generous regression guard: intended to catch accidental quadratic parsing.
     expect(performance.now() - started).toBeLessThan(15_000);
   }, 25_000);
+
+  it('exposes the EPG URL advertised in the header', () => {
+    const result = parseM3u(
+      '#EXTM3U url-tvg="https://guide.test/epg.xml,https://guide.test/other.xml"\n#EXTINF:-1,One\nhttps://host.test/one.m3u8',
+    );
+    expect(result.epgUrl).toBe('https://guide.test/epg.xml');
+    expect(parseM3u('#EXTM3U x-tvg-url="javascript:alert(1)"\n').epgUrl).toBeUndefined();
+    expect(parseM3u('#EXTM3U\n').epgUrl).toBeUndefined();
+  });
 });
