@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 import { api, type CreatePlaylistInput, type CreateXtreamInput } from '../api';
 import { Icon } from '../components/Icon';
+import { formatDate, useT } from '../i18n';
 import type { Playlist } from '../types';
 
 type SourceTab = 'url' | 'xtream' | 'file';
@@ -9,7 +10,7 @@ type SourceTab = 'url' | 'xtream' | 'file';
 function errorText(error: unknown): string | null {
   if (!error) return null;
   if (error instanceof Error) return error.message;
-  return typeof error === 'string' ? error : 'Error desconocido';
+  return typeof error === 'string' ? error : null;
 }
 
 function field(data: FormData, name: string): string {
@@ -18,13 +19,14 @@ function field(data: FormData, name: string): string {
 }
 
 export function ListsPage() {
+  const t = useT();
   const queryClient = useQueryClient();
   const playlists = useQuery({ queryKey: ['playlists'], queryFn: api.playlists });
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['playlists'] });
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<SourceTab>('url');
   const [editing, setEditing] = useState<string>();
-  const [fileName, setFileName] = useState('Mi lista local');
+  const [fileName, setFileName] = useState(() => t('lists.fileDefault'));
   const [notice, setNotice] = useState<string>();
 
   const close = () => {
@@ -91,25 +93,25 @@ export function ListsPage() {
     <section className="page lists-page">
       <header className="page-header">
         <div>
-          <span className="eyebrow">FUENTES</span>
-          <h1>Mis listas</h1>
+          <span className="eyebrow">{t('lists.eyebrow')}</span>
+          <h1>{t('lists.title')}</h1>
         </div>
         <button
           data-tv-focus
           className="primary-button"
           onClick={() => (open ? close() : setOpen(true))}
         >
-          + Añadir lista
+          {t('lists.add')}
         </button>
       </header>
       {open && (
         <div className="playlist-form">
-          <div className="source-tabs" role="tablist" aria-label="Tipo de fuente">
+          <div className="source-tabs" role="tablist">
             {(
               [
-                ['url', 'URL M3U / M3U8'],
-                ['xtream', 'Cuenta Xtream Codes'],
-                ['file', 'Archivo local'],
+                ['url', t('lists.tabUrl')],
+                ['xtream', t('lists.tabXtream')],
+                ['file', t('lists.tabFile')],
               ] as const
             ).map(([id, label]) => (
               <button
@@ -128,11 +130,16 @@ export function ListsPage() {
             <form onSubmit={submitUrl}>
               <div>
                 <label>
-                  Nombre
-                  <input data-tv-focus required name="name" placeholder="Televisión de casa" />
+                  {t('lists.name')}
+                  <input
+                    data-tv-focus
+                    required
+                    name="name"
+                    placeholder={t('lists.namePlaceholder')}
+                  />
                 </label>
                 <label>
-                  URL de la lista
+                  {t('lists.url')}
                   <input
                     data-tv-focus
                     required
@@ -140,28 +147,25 @@ export function ListsPage() {
                     type="url"
                     inputMode="url"
                     autoCapitalize="off"
-                    placeholder="https://servidor.ejemplo/lista.m3u"
+                    placeholder={t('lists.urlPlaceholder')}
                   />
                 </label>
                 <label>
-                  Guía XMLTV <small>opcional</small>
+                  {t('lists.epgUrl')} <small>{t('common.optional')}</small>
                   <input
                     data-tv-focus
                     name="epgUrl"
                     type="url"
                     inputMode="url"
                     autoCapitalize="off"
-                    placeholder="https://servidor.ejemplo/guia.xml"
+                    placeholder={t('lists.epgPlaceholder')}
                   />
                 </label>
               </div>
-              <p>
-                Si pegas una URL <code>get.php</code> de un panel Xtream se detecta automáticamente
-                y la guía se carga sola. Las credenciales solo se guardan en este dispositivo.
-              </p>
+              <p>{t('lists.urlHint')}</p>
               {formError && <p className="form-error">{formError}</p>}
               <button data-tv-focus disabled={pending} className="primary-button">
-                {pending ? 'Importando…' : 'Importar URL'}
+                {pending ? t('lists.importing') : t('lists.importUrl')}
               </button>
             </form>
           )}
@@ -169,57 +173,57 @@ export function ListsPage() {
             <form onSubmit={submitXtream}>
               <div className="xtream-grid">
                 <label>
-                  Nombre
-                  <input data-tv-focus required name="name" placeholder="Mi proveedor" />
+                  {t('lists.name')}
+                  <input data-tv-focus required name="name" placeholder={t('lists.providerName')} />
                 </label>
                 <label>
-                  Servidor <small>host:puerto</small>
+                  {t('lists.host')} <small>{t('lists.hostHint')}</small>
                   <input
                     data-tv-focus
                     required
                     name="host"
                     inputMode="url"
                     autoCapitalize="off"
-                    placeholder="http://panel.ejemplo:8080"
+                    placeholder={t('lists.hostPlaceholder')}
                   />
                 </label>
                 <label>
-                  Usuario
+                  {t('lists.username')}
                   <input data-tv-focus required name="username" autoCapitalize="off" />
                 </label>
                 <label>
-                  Contraseña
+                  {t('lists.password')}
                   <input data-tv-focus required name="password" type="password" />
                 </label>
                 <label>
-                  Formato de stream
+                  {t('lists.output')}
                   <select data-tv-focus name="output" defaultValue="ts">
-                    <option value="ts">MPEG-TS (recomendado)</option>
-                    <option value="m3u8">HLS (m3u8)</option>
+                    <option value="ts">{t('lists.outputTs')}</option>
+                    <option value="m3u8">{t('lists.outputHls')}</option>
                   </select>
                 </label>
               </div>
-              <p>Se descargan canales, categorías y guía del panel. Nada sale de tu dispositivo.</p>
+              <p>{t('lists.xtreamHint')}</p>
               {formError && <p className="form-error">{formError}</p>}
               <button data-tv-focus disabled={pending} className="primary-button">
-                {pending ? 'Conectando…' : 'Conectar cuenta'}
+                {pending ? t('lists.connecting') : t('lists.connect')}
               </button>
             </form>
           )}
           {tab === 'file' && (
             <div className="file-import inline">
               <div>
-                <h2>Importar archivo local</h2>
-                <p>Compatible con archivos .m3u y .m3u8.</p>
+                <h2>{t('lists.fileTitle')}</h2>
+                <p>{t('lists.fileHint')}</p>
               </div>
               <input
                 data-tv-focus
-                aria-label="Nombre de la lista local"
+                aria-label={t('lists.fileName')}
                 value={fileName}
                 onChange={(event) => setFileName(event.target.value)}
               />
               <label data-tv-focus className="secondary-button">
-                {importFile.isPending ? 'Importando…' : 'Elegir archivo'}
+                {importFile.isPending ? t('lists.importing') : t('lists.chooseFile')}
                 <input
                   type="file"
                   accept=".m3u,.m3u8,application/vnd.apple.mpegurl,audio/x-mpegurl"
@@ -258,7 +262,11 @@ export function ListsPage() {
               refresh.mutate(playlist.id, {
                 onSuccess: (result) =>
                   setNotice(
-                    `${playlist.name}: ${result.channelCount} canales y ${result.programCount} programas.`,
+                    t('lists.refreshed', {
+                      name: playlist.name,
+                      channels: result.channelCount,
+                      programs: result.programCount,
+                    }),
                   ),
               })
             }
@@ -267,7 +275,8 @@ export function ListsPage() {
               update.mutate({ id: playlist.id, input: { autoRefreshMinutes: minutes } })
             }
             onRemove={() => {
-              if (window.confirm(`¿Eliminar “${playlist.name}”?`)) remove.mutate(playlist.id);
+              if (window.confirm(t('lists.confirmDelete', { name: playlist.name })))
+                remove.mutate(playlist.id);
             }}
           />
         ))}
@@ -275,8 +284,8 @@ export function ListsPage() {
       {!playlists.isLoading && !playlists.data?.length && (
         <div className="empty-state large">
           <Icon name="lists" />
-          <strong>Tu biblioteca está vacía</strong>
-          <p>Añade una URL M3U, una cuenta Xtream o importa un archivo local para empezar.</p>
+          <strong>{t('lists.empty')}</strong>
+          <p>{t('lists.emptyHint')}</p>
         </div>
       )}
     </section>
@@ -304,8 +313,30 @@ function PlaylistCard({
   onAutoRefresh: (minutes: number) => void;
   onRemove: () => void;
 }) {
+  const t = useT();
   const kindLabel =
-    playlist.kind === 'xtream' ? 'Xtream Codes' : playlist.kind === 'file' ? 'Archivo' : 'URL M3U';
+    playlist.kind === 'xtream'
+      ? t('lists.kindXtream')
+      : playlist.kind === 'file'
+        ? t('lists.kindFile')
+        : t('lists.kindUrl');
+  const relative = (input: string): string => {
+    const diff = Date.now() - new Date(input).getTime();
+    if (Number.isNaN(diff)) return '';
+    if (diff < 60_000) return t('lists.now');
+    if (diff < 3_600_000) return t('lists.minutesAgo', { count: Math.floor(diff / 60_000) });
+    if (diff < 86_400_000) return t('lists.hoursAgo', { count: Math.floor(diff / 3_600_000) });
+    return formatDate(input, { day: 'numeric', month: 'short' });
+  };
+  const guideState = playlist.epgUrl
+    ? playlist.epgStatus === 'ready'
+      ? t('lists.guideUpdated', {
+          when: relative(playlist.epgUpdatedAt ?? playlist.lastUpdatedAt ?? ''),
+        })
+      : playlist.epgStatus === 'error'
+        ? t('lists.guideError')
+        : t('lists.guidePending')
+    : t('lists.noGuide');
   return (
     <article className="playlist-card">
       <div className="playlist-icon">
@@ -329,54 +360,57 @@ function PlaylistCard({
         <p>
           <span className={`status-dot ${playlist.status === 'error' ? 'error' : ''}`} />
           {playlist.status === 'pending'
-            ? 'Pendiente'
+            ? t('lists.pending')
             : playlist.status === 'error'
-              ? 'Con errores'
-              : 'Lista disponible'}
+              ? t('lists.error')
+              : t('lists.ready')}
           <span className="kind-chip">{kindLabel}</span>
         </p>
         <strong>
-          {playlist.channelCount} canales
-          {playlist.programCount ? ` · ${playlist.programCount} programas` : ''}
+          {t('common.channels', { count: playlist.channelCount })}
+          {playlist.programCount
+            ? ` · ${t('lists.programs', { count: playlist.programCount })}`
+            : ''}
         </strong>
+        {(playlist.movieCount || playlist.seriesCount) > 0 && (
+          <small>
+            {t('lists.vodCount', { movies: playlist.movieCount, series: playlist.seriesCount })}
+          </small>
+        )}
         <small>
           {playlist.lastUpdatedAt
-            ? `Actualizada ${relativeDate(playlist.lastUpdatedAt)}`
-            : 'Aún no actualizada'}
-          {playlist.epgUrl
-            ? playlist.epgStatus === 'ready'
-              ? ` · guía ${relativeDate(playlist.epgUpdatedAt ?? playlist.lastUpdatedAt ?? '')}`
-              : playlist.epgStatus === 'error'
-                ? ' · guía con errores'
-                : ' · guía pendiente'
-            : ' · sin guía'}
+            ? t('lists.updated', { when: relative(playlist.lastUpdatedAt) })
+            : t('lists.notUpdated')}
+          {` · ${guideState}`}
         </small>
         {playlist.account && (
           <small>
-            Cuenta {playlist.account.status.toLowerCase()}
+            {t('lists.account', { status: playlist.account.status.toLowerCase() })}
             {playlist.account.expiresAt
-              ? ` · caduca ${new Intl.DateTimeFormat('es', { dateStyle: 'medium' }).format(new Date(playlist.account.expiresAt))}`
+              ? ` · ${t('lists.expires', { date: formatDate(playlist.account.expiresAt, { dateStyle: 'medium' }) })}`
               : ''}
             {playlist.account.maxConnections
-              ? ` · ${playlist.account.activeConnections ?? 0}/${playlist.account.maxConnections} conexiones`
+              ? ` · ${t('lists.connections', { active: playlist.account.activeConnections ?? 0, max: playlist.account.maxConnections })}`
               : ''}
           </small>
         )}
         {playlist.lastError && <em>{playlist.lastError}</em>}
-        {playlist.epgError && !playlist.lastError && <em>Guía: {playlist.epgError}</em>}
+        {playlist.epgError && !playlist.lastError && (
+          <em>{t('lists.guidePrefix', { error: playlist.epgError })}</em>
+        )}
         {playlist.kind !== 'file' && (
           <label className="refresh-select">
-            Actualización automática
+            {t('lists.autoRefresh')}
             <select
               data-tv-focus
               value={playlist.autoRefreshMinutes}
               onChange={(event) => onAutoRefresh(Number(event.target.value))}
             >
-              <option value={0}>Manual</option>
-              <option value={60}>Cada hora</option>
-              <option value={360}>Cada 6 horas</option>
-              <option value={720}>Cada 12 horas</option>
-              <option value={1440}>Cada día</option>
+              <option value={0}>{t('lists.manual')}</option>
+              <option value={60}>{t('lists.hourly')}</option>
+              <option value={360}>{t('lists.every6h')}</option>
+              <option value={720}>{t('lists.every12h')}</option>
+              <option value={1440}>{t('lists.daily')}</option>
             </select>
           </label>
         )}
@@ -386,7 +420,7 @@ function PlaylistCard({
           data-tv-focus
           onClick={onRefresh}
           disabled={busy}
-          aria-label={`Actualizar ${playlist.name}`}
+          aria-label={t('lists.refresh', { name: playlist.name })}
         >
           <Icon name="retry" />
         </button>
@@ -395,32 +429,27 @@ function PlaylistCard({
             data-tv-focus
             onClick={onRefreshEpg}
             disabled={busy}
-            aria-label={`Actualizar guía de ${playlist.name}`}
+            aria-label={t('lists.refreshGuide', { name: playlist.name })}
           >
             <Icon name="guide" />
           </button>
         )}
-        <button data-tv-focus onClick={onEdit} aria-label={`Editar ${playlist.name}`}>
-          Editar
+        <button
+          data-tv-focus
+          onClick={onEdit}
+          aria-label={t('lists.editList', { name: playlist.name })}
+        >
+          {t('common.edit')}
         </button>
         <button
           data-tv-focus
           className="danger"
           onClick={onRemove}
-          aria-label={`Eliminar ${playlist.name}`}
+          aria-label={t('lists.deleteList', { name: playlist.name })}
         >
-          Eliminar
+          {t('common.delete')}
         </button>
       </div>
     </article>
   );
-}
-
-function relativeDate(input: string): string {
-  const diff = Date.now() - new Date(input).getTime();
-  if (Number.isNaN(diff)) return '';
-  if (diff < 60_000) return 'ahora';
-  if (diff < 3_600_000) return `hace ${Math.floor(diff / 60_000)} min`;
-  if (diff < 86_400_000) return `hace ${Math.floor(diff / 3_600_000)} h`;
-  return new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short' }).format(new Date(input));
 }

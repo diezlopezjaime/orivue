@@ -1,14 +1,21 @@
 import { NavLink } from 'react-router-dom';
+import { useT, type MessageKey } from '../i18n';
 import { Icon } from './Icon';
 
-const links = [
-  { to: '/', icon: 'live' as const, label: 'En directo' },
-  { to: '/guide', icon: 'guide' as const, label: 'Guía' },
-  { to: '/lists', icon: 'lists' as const, label: 'Mis listas' },
-  { to: '/settings', icon: 'settings' as const, label: 'Ajustes' },
+const links: Array<{
+  to: string;
+  icon: 'live' | 'guide' | 'video' | 'lists' | 'settings';
+  label: MessageKey;
+}> = [
+  { to: '/', icon: 'live', label: 'nav.live' },
+  { to: '/guide', icon: 'guide', label: 'nav.guide' },
+  { to: '/video', icon: 'video', label: 'nav.video' },
+  { to: '/lists', icon: 'lists', label: 'nav.lists' },
+  { to: '/settings', icon: 'settings', label: 'nav.settings' },
 ];
 
 export function Sidebar() {
+  const t = useT();
   return (
     <aside className="sidebar">
       <div className="brand" aria-label="Orivue">
@@ -29,13 +36,13 @@ export function Sidebar() {
             className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
           >
             <Icon name={link.icon} />
-            <span>{link.label}</span>
+            <span>{t(link.label)}</span>
           </NavLink>
         ))}
       </nav>
       <div className="sidebar-foot">
         <span className="status-dot" />
-        Local y privado
+        {t('brand.local')}
       </div>
     </aside>
   );

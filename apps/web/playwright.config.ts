@@ -7,6 +7,7 @@ export default defineConfig({
   reporter: process.env.CI ? 'github' : 'list',
   use: {
     baseURL: 'http://127.0.0.1:4173',
+    locale: 'es-ES',
     trace: 'on-first-retry',
     // Lets an environment with a preinstalled Chromium point to it explicitly.
     ...(process.env.ORIVUE_CHROMIUM_PATH
