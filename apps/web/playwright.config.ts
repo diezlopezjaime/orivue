@@ -5,7 +5,14 @@ export default defineConfig({
   fullyParallel: true,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? 'github' : 'list',
-  use: { baseURL: 'http://127.0.0.1:4173', trace: 'on-first-retry' },
+  use: {
+    baseURL: 'http://127.0.0.1:4173',
+    trace: 'on-first-retry',
+    // Lets an environment with a preinstalled Chromium point to it explicitly.
+    ...(process.env.ORIVUE_CHROMIUM_PATH
+      ? { launchOptions: { executablePath: process.env.ORIVUE_CHROMIUM_PATH } }
+      : {}),
+  },
   webServer: {
     command: 'pnpm build && pnpm preview',
     url: 'http://127.0.0.1:4173',

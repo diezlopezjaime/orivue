@@ -1,8 +1,12 @@
-import Hls from 'hls.js';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from '../api';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { getAppPlatform, getDevice, getEngine } from '../engine';
+import { useBackButton } from '../hooks/useBackButton';
+import type { StreamHandle } from '../platform';
+import { createNativePlayer } from '../player/native-player';
+import type { Player, PlayerTracks } from '../player/types';
+import { createWebPlayer } from '../player/web-player';
 import { useAppStore } from '../store';
-import type { Channel, PlaybackSession, PlaybackStatus } from '../types';
+import type { Channel, PlaybackStatus } from '../types';
 import { Icon } from './Icon';
 import { Logo } from './Logo';
 
@@ -13,6 +17,14 @@ const statusText: Record<PlaybackStatus, string> = {
   playing: 'En directo',
   retrying: 'Reconectando…',
   error: 'No se pudo reproducir este canal',
+};
+
+const kindLabel: Record<string, string> = {
+  hls: 'HLS',
+  mpegts: 'MPEG-TS',
+  http: 'HTTP',
+  acestream: 'Ace Stream',
+  unknown: '',
 };
 
 export function PlayerOverlay({
@@ -28,15 +40,19 @@ export function PlayerOverlay({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
-  const hlsRef = useRef<Hls | undefined>(undefined);
+  const playerRef = useRef<Player | undefined>(undefined);
   const retryRef = useRef(0);
+  const hideTimer = useRef<number | undefined>(undefined);
   const [attempt, setAttempt] = useState(0);
   const [status, setStatus] = useState<PlaybackStatus>('connecting');
   const [message, setMessage] = useState('');
-  const [audioTracks, setAudioTracks] = useState<Array<{ id: number; name: string }>>([]);
-  const [subtitleTracks, setSubtitleTracks] = useState<Array<{ id: number; name: string }>>([]);
+  const [tracks, setTracks] = useState<PlayerTracks>({ audio: [], text: [] });
+  const [paused, setPaused] = useState(false);
+  const [backend, setBackend] = useState<'web' | 'native'>('web');
   const [controlsVisible, setControlsVisible] = useState(true);
-  const { volume, muted, aspect, setVolume, setMuted, cycleAspect } = useAppStore();
+  const { volume, muted, aspect, setVolume, setMuted, cycleAspect, playerPreference } =
+    useAppStore();
+  const device = getDevice();
 
   const changeRelative = useCallback(
     (offset: number) => {
@@ -48,26 +64,28 @@ export function PlayerOverlay({
     [channel.id, channels, onChange],
   );
 
+  const showControls = useCallback(() => {
+    setControlsVisible(true);
+    window.clearTimeout(hideTimer.current);
+    hideTimer.current = window.setTimeout(() => setControlsVisible(false), 4000);
+  }, []);
+
   useEffect(() => {
     retryRef.current = 0;
   }, [channel.id]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    let session: PlaybackSession | undefined;
-    let hls: Hls | undefined;
     const video = videoRef.current;
     if (!video) return;
-    let failed = false;
+    let cancelled = false;
+    let handle: StreamHandle | undefined;
     setStatus('connecting');
     setMessage('');
-    setAudioTracks([]);
-    setSubtitleTracks([]);
+    setPaused(false);
 
     const fail = (detail?: string) => {
-      if (controller.signal.aborted || failed) return;
-      failed = true;
-      if (retryRef.current < 2) {
+      if (cancelled) return;
+      if (retryRef.current < 2 && !detail?.includes('códec')) {
         retryRef.current += 1;
         setStatus('retrying');
         window.setTimeout(() => setAttempt((value) => value + 1), 900 * retryRef.current);
@@ -77,129 +95,119 @@ export function PlayerOverlay({
       }
     };
 
-    const attach = (playback: PlaybackSession) => {
-      session = playback;
-      const source = playback.url;
-      if (playback.type === 'http') {
-        video.src = source;
-        void video.play().catch(() => setStatus('buffering'));
-        return;
-      }
-      if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = source;
-        void video.play().catch(() => setStatus('buffering'));
-        return;
-      }
-      if (Hls.isSupported()) {
-        hls = new Hls({ maxBufferLength: 30, backBufferLength: 10, enableWorker: true });
-        hlsRef.current = hls;
-        hls.loadSource(source);
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          setAudioTracks(
-            hls?.audioTracks.map((track, id) => ({
-              id,
-              name: track.name || track.lang || `Pista ${id + 1}`,
-            })) ?? [],
-          );
-          setSubtitleTracks(
-            hls?.subtitleTracks.map((track, id) => ({
-              id,
-              name: track.name || track.lang || `Subtítulo ${id + 1}`,
-            })) ?? [],
-          );
-          void video.play().catch(() => setStatus('buffering'));
-        });
-        hls.on(Hls.Events.ERROR, (_event, data) => {
-          if (data.fatal) fail(data.details);
-        });
-        return;
-      }
-      setStatus('error');
-      setMessage('Este navegador no admite la reproducción HLS.');
+    const platform = getAppPlatform();
+    const useNative =
+      platform.native !== null && (playerPreference === 'native' || playerPreference === 'auto');
+    const callbacks = {
+      onStatus: (next: PlaybackStatus, detail?: string) => {
+        if (cancelled) return;
+        if (next === 'error') fail(detail);
+        else setStatus(next);
+      },
+      onTracks: (next: PlayerTracks) => {
+        if (!cancelled) setTracks(next);
+      },
     };
+    const player =
+      useNative && platform.native
+        ? createNativePlayer(platform.native, callbacks)
+        : createWebPlayer(video, callbacks);
+    playerRef.current = player;
+    setBackend(player.kind);
+    player.setVolume(volume, muted);
+    player.setAspect(aspect);
 
-    void api
-      .createPlayback(channel.id, controller.signal)
-      .then(attach)
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) fail(error instanceof Error ? error.message : undefined);
-      });
+    void (async () => {
+      try {
+        const playable = await getEngine().getPlayable(channel.id);
+        if (cancelled) return;
+        handle = await platform.playback.open(playable);
+        if (cancelled) return;
+        await player.load(handle, channel.name);
+      } catch (error) {
+        fail(error instanceof Error ? error.message : undefined);
+      }
+    })();
+
     return () => {
-      controller.abort();
-      hls?.stopLoad();
-      hls?.destroy();
-      if (hlsRef.current === hls) hlsRef.current = undefined;
-      video.pause();
-      video.removeAttribute('src');
-      video.load();
-      if (session) void api.stopPlayback(session.id).catch(() => undefined);
+      cancelled = true;
+      player.destroy();
+      if (playerRef.current === player) playerRef.current = undefined;
+      if (handle) void platform.playback.close(handle.id);
     };
-  }, [attempt, channel.id]);
+    // Volume, mute and aspect are applied through separate effects.
+  }, [attempt, channel.id, playerPreference]);
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (video) {
-      video.volume = volume;
-      video.muted = muted;
-    }
+    playerRef.current?.setVolume(volume, muted);
   }, [muted, volume]);
 
   useEffect(() => {
+    playerRef.current?.setAspect(aspect);
+  }, [aspect]);
+
+  const togglePaused = useCallback(() => {
+    setPaused((value) => {
+      playerRef.current?.setPaused(!value);
+      return !value;
+    });
+  }, []);
+
+  useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      setControlsVisible(true);
-      if (event.key === 'Escape' || event.key === 'Backspace') {
+      showControls();
+      const key = event.key;
+      if (key === 'Escape' || key === 'Backspace' || key === 'GoBack' || key === 'BrowserBack') {
         event.preventDefault();
         onClose();
-      }
-      if (event.key === 'PageUp' || event.key === 'ChannelUp') {
+      } else if (key === 'PageUp' || key === 'ChannelUp') {
         event.preventDefault();
         changeRelative(-1);
-      }
-      if (event.key === 'PageDown' || event.key === 'ChannelDown') {
+      } else if (key === 'PageDown' || key === 'ChannelDown') {
         event.preventDefault();
         changeRelative(1);
-      }
-      if (event.key.toLowerCase() === 'm') setMuted(!muted);
-      if (event.key.toLowerCase() === 'f') void shellRef.current?.requestFullscreen();
+      } else if (
+        key === 'MediaPlayPause' ||
+        key === 'MediaPlay' ||
+        key === 'MediaPause' ||
+        key === ' '
+      ) {
+        if (event.target instanceof HTMLButtonElement && key === ' ') return;
+        event.preventDefault();
+        togglePaused();
+      } else if (key.toLowerCase() === 'm') setMuted(!muted);
+      else if (key.toLowerCase() === 'f') void shellRef.current?.requestFullscreen?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [changeRelative, muted, onClose, setMuted]);
+  }, [changeRelative, muted, onClose, setMuted, showControls, togglePaused]);
+
+  useEffect(() => {
+    showControls();
+    return () => window.clearTimeout(hideTimer.current);
+  }, [showControls]);
+
+  useBackButton(onClose);
 
   const fullscreen = () =>
-    document.fullscreenElement ? document.exitFullscreen() : shellRef.current?.requestFullscreen();
-  const selectAudio = (value: string) => {
-    const index = Number(value);
-    if (hlsRef.current) hlsRef.current.audioTrack = index;
-    const video = videoRef.current;
-    const tracks =
-      video && 'audioTracks' in video
-        ? (
-            video as HTMLVideoElement & {
-              audioTracks: { length: number; [key: number]: { enabled: boolean } };
-            }
-          ).audioTracks
-        : undefined;
-    if (tracks) for (let i = 0; i < tracks.length; i++) tracks[i]!.enabled = i === index;
-  };
-  const selectSubtitle = (value: string) => {
-    const index = Number(value);
-    if (hlsRef.current) hlsRef.current.subtitleTrack = index;
-    const video = videoRef.current;
-    if (!video) return;
-    for (let i = 0; i < video.textTracks.length; i++)
-      video.textTracks[i]!.mode = i === index ? 'showing' : 'disabled';
-  };
+    document.fullscreenElement
+      ? document.exitFullscreen()
+      : shellRef.current?.requestFullscreen?.();
+
+  const kind = useMemo(
+    () => kindLabel[channel.streamKind ?? 'unknown'] ?? '',
+    [channel.streamKind],
+  );
 
   return (
     <div
-      className="player-shell"
+      className={`player-shell ${backend === 'native' ? 'native' : ''}`}
       ref={shellRef}
       role="dialog"
       aria-modal="true"
       aria-label={`Reproduciendo ${channel.name}`}
-      onMouseMove={() => setControlsVisible(true)}
+      onMouseMove={showControls}
+      onTouchStart={showControls}
     >
       <video
         ref={videoRef}
@@ -208,13 +216,14 @@ export function PlayerOverlay({
         style={{ objectFit: aspect }}
         onPlaying={() => setStatus('playing')}
         onWaiting={() => setStatus('buffering')}
-        onError={() => setStatus('error')}
       />
       <div className={`player-shade ${controlsVisible || status !== 'playing' ? 'visible' : ''}`}>
         <header className="player-top">
           <span className="live-badge">
             <i />
             EN DIRECTO
+            {kind && <em>{kind}</em>}
+            {backend === 'native' && <em>nativo</em>}
           </span>
           <button
             data-tv-focus
@@ -263,6 +272,30 @@ export function PlayerOverlay({
             <button
               data-tv-focus
               className="icon-button"
+              onClick={() => changeRelative(-1)}
+              aria-label="Canal anterior"
+            >
+              <Icon name="up" />
+            </button>
+            <button
+              data-tv-focus
+              className="icon-button"
+              onClick={() => changeRelative(1)}
+              aria-label="Canal siguiente"
+            >
+              <Icon name="down" />
+            </button>
+            <button
+              data-tv-focus
+              className="icon-button"
+              onClick={togglePaused}
+              aria-label={paused ? 'Reanudar' : 'Pausar'}
+            >
+              <Icon name={paused ? 'play' : 'pause'} />
+            </button>
+            <button
+              data-tv-focus
+              className="icon-button"
               onClick={() => setMuted(!muted)}
               aria-label={muted ? 'Activar sonido' : 'Silenciar'}
             >
@@ -278,30 +311,32 @@ export function PlayerOverlay({
               value={muted ? 0 : volume}
               onChange={(event) => setVolume(Number(event.target.value))}
             />
-            {audioTracks.length > 1 && (
+            {tracks.audio.length > 1 && (
               <select
                 data-tv-focus
                 aria-label="Pista de audio"
-                onChange={(event) => selectAudio(event.target.value)}
+                onChange={(event) => playerRef.current?.selectTrack('audio', event.target.value)}
               >
-                {audioTracks.map((track) => (
+                {tracks.audio.map((track) => (
                   <option key={track.id} value={track.id}>
-                    {track.name}
+                    {track.label}
                   </option>
                 ))}
               </select>
             )}
-            {subtitleTracks.length > 0 && (
+            {tracks.text.length > 0 && (
               <select
                 data-tv-focus
                 aria-label="Subtítulos"
-                defaultValue="-1"
-                onChange={(event) => selectSubtitle(event.target.value)}
+                defaultValue=""
+                onChange={(event) =>
+                  playerRef.current?.selectTrack('text', event.target.value || null)
+                }
               >
-                <option value="-1">Subtítulos: no</option>
-                {subtitleTracks.map((track) => (
+                <option value="">Subtítulos: no</option>
+                {tracks.text.map((track) => (
                   <option key={track.id} value={track.id}>
-                    {track.name}
+                    {track.label}
                   </option>
                 ))}
               </select>
@@ -309,17 +344,21 @@ export function PlayerOverlay({
             <button data-tv-focus className="text-button" onClick={cycleAspect}>
               Ajuste: {aspect === 'contain' ? 'encajar' : aspect === 'cover' ? 'cubrir' : 'estirar'}
             </button>
-            <button
-              data-tv-focus
-              className="icon-button"
-              onClick={() => void fullscreen()}
-              aria-label="Pantalla completa"
-            >
-              <Icon name="fullscreen" />
-            </button>
+            {!device.tv && (
+              <button
+                data-tv-focus
+                className="icon-button"
+                onClick={() => void fullscreen()}
+                aria-label="Pantalla completa"
+              >
+                <Icon name="fullscreen" />
+              </button>
+            )}
           </div>
           <p className="player-hint">
-            PgUp / PgDn cambia de canal · Esc cierra · F pantalla completa
+            {device.tv
+              ? 'Arriba/Abajo cambia de canal · Atrás cierra · Play/Pausa pausa'
+              : 'PgUp / PgDn cambia de canal · Esc cierra · F pantalla completa · Espacio pausa'}
           </p>
         </div>
       </div>

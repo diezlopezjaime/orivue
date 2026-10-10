@@ -1,28 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { BrowsePage } from './BrowsePage';
 import { useAppStore } from '../store';
+import { installTestEngine } from '../test/engine-fixture';
 
-const channels = [
-  {
-    id: 'one',
-    name: 'Canal Aurora',
-    number: 1,
-    groupId: 'news',
-    groupName: 'Noticias',
-    favorite: false,
-  },
-];
-function json(value: unknown) {
-  return Promise.resolve(
-    new Response(JSON.stringify(value), {
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-    }),
-  );
-}
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -33,36 +16,52 @@ function renderPage() {
 }
 
 describe('BrowsePage', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     useAppStore.setState({
       selectedGroupId: undefined,
       filter: 'all',
       search: '',
       currentChannel: undefined,
     });
-    vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
-      const url = input instanceof Request ? input.url : input instanceof URL ? input.href : input;
-      return url.includes('/groups')
-        ? json([{ id: 'news', name: 'Noticias', channelCount: 1 }])
-        : json(channels);
+    const { engine } = await installTestEngine();
+    const source = await engine.addSource({
+      kind: 'm3u',
+      name: 'Demo',
+      url: 'https://lists.test/demo.m3u',
+      epgUrl: 'https://guide.test/epg.xml',
     });
+    await engine.refreshSource(source.id);
   });
-  it('loads channels and supports search', async () => {
-    const user = userEvent.setup();
+
+  it('loads channels, groups and the current programme', async () => {
     renderPage();
     expect(await screen.findByText('Canal Aurora')).toBeTruthy();
-    await user.type(screen.getByPlaceholderText('Buscar un canal…'), 'aurora');
-    await waitFor(() => expect(useAppStore.getState().search).toBe('aurora'));
-    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('search=aurora'), expect.anything());
+    expect(screen.getByText('Boletín abierto')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Noticias/ })).toBeTruthy();
+    expect(screen.getByText('3 canales')).toBeTruthy();
   });
-  it('selects a channel for playback', async () => {
+
+  it('filters by search text', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Canal Aurora');
+    await user.type(screen.getByPlaceholderText('Buscar un canal…'), 'horiz');
+    await waitFor(() => expect(useAppStore.getState().search).toBe('horiz'));
+    await waitFor(() => expect(screen.queryByText('Canal Aurora')).toBeNull());
+    expect(screen.getByText('Canal Horizonte')).toBeTruthy();
+  });
+
+  it('selects a channel for playback and toggles favourites', async () => {
     const user = userEvent.setup();
     renderPage();
     await user.click(await screen.findByRole('button', { name: 'Reproducir Canal Aurora' }));
-    expect(useAppStore.getState().currentChannel?.id).toBe('one');
+    expect(useAppStore.getState().currentChannel?.name).toBe('Canal Aurora');
+    await user.click(screen.getByRole('button', { name: 'Añadir Canal Aurora a favoritos' }));
+    await screen.findByRole('button', { name: 'Quitar Canal Aurora de favoritos' });
   });
-  it('handles a broken logo without exposing an empty image', async () => {
+
+  it('handles a missing logo without exposing an empty image', async () => {
     renderPage();
-    expect(await screen.findByText('CA')).toBeTruthy();
+    expect(await screen.findAllByText('CA')).toHaveLength(2);
   });
 });

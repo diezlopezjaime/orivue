@@ -6,14 +6,14 @@ cambian el backend de reproducción y el empaquetado.
 
 ## Estado por plataforma
 
-| Plataforma         | Artefacto                      | Backend de reproducción                 | Validación                         |
-| ------------------ | ------------------------------ | --------------------------------------- | ---------------------------------- |
-| Linux (x64)        | `.deb`, `.AppImage`, `.rpm`    | Web (mpegts.js / hls.js)                | Compilado y probado en CI Linux    |
-| Windows (x64)      | `.exe` NSIS, `.msi`            | Web (WebView2: mpegts.js / hls.js)      | Compilado en CI; no probado a mano |
-| macOS (arm64/x64)  | `.dmg`, `.app`                 | Web (WebKit: HLS nativo, mpegts.js)     | Compilado en CI; no probado a mano |
-| Android 7+         | `.apk` universal (debug key)   | Nativo Media3/ExoPlayer; web de reserva | Compilado en CI; no en dispositivo |
-| Fire TV Stick      | mismo `.apk` (sideload)        | Nativo Media3/ExoPlayer; web de reserva | Compilado en CI; no en dispositivo |
-| iOS 17.1+          | `.app` de simulador sin firma  | Web (HLS nativo WebKit, mpegts.js MMS)  | Compilado en CI macOS; no probado  |
+| Plataforma        | Artefacto                     | Backend de reproducción                 | Validación                         |
+| ----------------- | ----------------------------- | --------------------------------------- | ---------------------------------- |
+| Linux (x64)       | `.deb`, `.AppImage`, `.rpm`   | Web (mpegts.js / hls.js)                | Compilado y probado en CI Linux    |
+| Windows (x64)     | `.exe` NSIS, `.msi`           | Web (WebView2: mpegts.js / hls.js)      | Compilado en CI; no probado a mano |
+| macOS (arm64/x64) | `.dmg`, `.app`                | Web (WebKit: HLS nativo, mpegts.js)     | Compilado en CI; no probado a mano |
+| Android 7+        | `.apk` universal (debug key)  | Nativo Media3/ExoPlayer; web de reserva | Compilado en CI; no en dispositivo |
+| Fire TV Stick     | mismo `.apk` (sideload)       | Nativo Media3/ExoPlayer; web de reserva | Compilado en CI; no en dispositivo |
+| iOS 17.1+         | `.app` de simulador sin firma | Web (HLS nativo WebKit, mpegts.js MMS)  | Compilado en CI macOS; no probado  |
 
 "Compilado en CI" significa que el workflow produce el artefacto; no implica
 que se haya ejecutado en el dispositivo. La fila se actualizará cuando exista
@@ -21,15 +21,15 @@ una prueba manual registrada en el changelog.
 
 ## Formatos admitidos
 
-| Formato de stream           | Escritorio (web)       | Android / Fire TV (nativo) | iOS (web)                     |
-| --------------------------- | ---------------------- | -------------------------- | ----------------------------- |
-| HLS `.m3u8` (H.264/AAC)     | Sí                     | Sí                         | Sí, nativo                    |
-| HLS con AC-3/EC-3           | No (MSE)               | Sí                         | Sí, nativo                    |
-| MPEG-TS directo H.264/AAC   | Sí (mpegts.js)         | Sí                         | Sí (ManagedMediaSource)       |
-| MPEG-TS con MP2/AC-3/MPEG-2 | No                     | Sí                         | No                            |
-| MPEG-TS H.265               | Depende del hardware   | Depende del hardware       | No                            |
-| HTTP progresivo MP4/MKV     | MP4 sí; MKV no         | Sí                         | MP4 sí; MKV no                |
-| `acestream://`              | Con motor local        | Con app Ace Stream         | No                            |
+| Formato de stream           | Escritorio (web)     | Android / Fire TV (nativo) | iOS (web)               |
+| --------------------------- | -------------------- | -------------------------- | ----------------------- |
+| HLS `.m3u8` (H.264/AAC)     | Sí                   | Sí                         | Sí, nativo              |
+| HLS con AC-3/EC-3           | No (MSE)             | Sí                         | Sí, nativo              |
+| MPEG-TS directo H.264/AAC   | Sí (mpegts.js)       | Sí                         | Sí (ManagedMediaSource) |
+| MPEG-TS con MP2/AC-3/MPEG-2 | No                   | Sí                         | No                      |
+| MPEG-TS H.265               | Depende del hardware | Depende del hardware       | No                      |
+| HTTP progresivo MP4/MKV     | MP4 sí; MKV no       | Sí                         | MP4 sí; MKV no          |
+| `acestream://`              | Con motor local      | Con app Ace Stream         | No                      |
 
 Cuando un stream no puede decodificarse, el reproductor muestra el motivo en
 lugar de quedarse cargando.
@@ -82,11 +82,11 @@ ausencia de pantalla táctil con pantalla grande) y puede forzarse en Ajustes.
 Aumenta tamaños y anillos de foco, añade margen de overscan y oculta los
 elementos que requieren ratón. Teclas:
 
-| Mando / teclado          | Acción                                    |
-| ------------------------ | ----------------------------------------- |
-| Anillo direccional       | Mover el foco                             |
-| OK / Enter               | Activar                                   |
-| Atrás / Esc / Backspace  | Cerrar reproductor o volver               |
-| Arriba/Abajo en el vídeo | Canal anterior / siguiente                |
-| Reproducir/Pausa         | Pausar (solo backend nativo o VOD)        |
-| Menú / M                 | Mostrar controles del reproductor         |
+| Mando / teclado          | Acción                             |
+| ------------------------ | ---------------------------------- |
+| Anillo direccional       | Mover el foco                      |
+| OK / Enter               | Activar                            |
+| Atrás / Esc / Backspace  | Cerrar reproductor o volver        |
+| Arriba/Abajo en el vídeo | Canal anterior / siguiente         |
+| Reproducir/Pausa         | Pausar (solo backend nativo o VOD) |
+| Menú / M                 | Mostrar controles del reproductor  |
