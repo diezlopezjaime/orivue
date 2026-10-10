@@ -48,18 +48,16 @@ jobs:
         run: pnpm --filter @orivue/desktop tauri ios init --ci
       - name: Ajustar Info.plist (ATS para loopback y HTTP)
         run: node apps/desktop/scripts/patch-ios-project.mjs
-      - name: Compilar para simulador
-        working-directory: apps/desktop/src-tauri/gen/apple
+      - name: Compilar para simulador (sin firma)
+        run: pnpm --filter @orivue/desktop tauri ios build --debug --target aarch64-sim --no-sign --ci
+      - name: Empaquetar la app
         run: |
-          PROJECT=$(ls -d *.xcodeproj | head -1)
-          SCHEME=$(xcodebuild -list -json -project "$PROJECT" | python3 -c 'import json,sys; s=json.load(sys.stdin)["project"]["schemes"]; print([x for x in s if x.endswith("_iOS")][0])')
-          echo "Proyecto $PROJECT, esquema $SCHEME"
-          xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration debug \
-            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
-          APP=$(find build/Build/Products -name '*.app' -maxdepth 2 | head -1)
-          mkdir -p ../../../../../out
-          ditto -c -k --keepParent "$APP" ../../../../../out/orivue-ios-simulator.zip
+          APP=$(find apps/desktop/src-tauri/gen/apple -type d -name '*.app' -path '*aarch64-sim*' | head -1)
+          if [ -z "$APP" ]; then APP=$(find apps/desktop/src-tauri/gen/apple -type d -name 'Orivue.app' | head -1); fi
+          echo "App: $APP"
+          test -n "$APP"
+          mkdir -p out
+          ditto -c -k --keepParent "$APP" out/orivue-ios-simulator.zip
       - uses: actions/upload-artifact@v4
         with:
           name: orivue-ios-simulator
