@@ -17,7 +17,7 @@ android {
     compileSdk = 36
     namespace = "io.github.jaime.orivue"
     defaultConfig {
-        manifestPlaceholders["usesCleartextTraffic"] = "false"
+        manifestPlaceholders["usesCleartextTraffic"] = "true"
         applicationId = "io.github.jaime.orivue"
         minSdk = 24
         targetSdk = 36
