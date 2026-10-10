@@ -7,3 +7,7 @@ allowBuilds:
 
 overrides:
   esbuild: 0.28.1
+
+# The Xcode build phase runs pnpm without a TTY; never auto-reinstall there.
+verifyDepsBeforeRun: false
+confirmModulesPurge: false
