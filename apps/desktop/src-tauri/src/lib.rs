@@ -1,150 +1,194 @@
-#[cfg(not(debug_assertions))]
-use std::path::PathBuf;
-use std::sync::{Mutex, RwLock};
+//! Orivue application shell. The UI runs inside the webview; this crate only
+//! provides what a webview cannot do on its own: a loopback media proxy,
+//! bounded downloads without CORS, a durable key-value store and device
+//! information. Everything is shared by desktop, Android, Fire TV and iOS.
 
-#[cfg(not(debug_assertions))]
-use serde::Deserialize;
-use serde::Serialize;
-#[cfg(not(debug_assertions))]
-use tauri::Emitter;
+use std::path::PathBuf;
+use std::time::Duration;
+
+use orivue_stream_proxy::{
+    DestinationPolicy, FetchTextOptions, OpenSession, ProxyHandle, ProxyOptions, ProxyServer,
+    SessionHeaders, SessionInfo,
+};
+use serde::{Deserialize, Serialize};
 use tauri::{Manager, RunEvent, State};
-use tauri_plugin_shell::process::CommandChild;
-#[cfg(not(debug_assertions))]
-use tauri_plugin_shell::process::CommandEvent;
-#[cfg(not(debug_assertions))]
-use tauri_plugin_shell::ShellExt;
-use uuid::Uuid;
+
+const MAX_FETCH_BYTES: usize = 200 * 1024 * 1024;
+const MAX_KV_BYTES: usize = 16 * 1024 * 1024;
+
+struct AppState {
+    proxy: ProxyHandle,
+    kv_dir: PathBuf,
+}
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ServiceConnection {
+struct ProxyInfo {
     base_url: String,
     token: String,
 }
 
-#[cfg(not(debug_assertions))]
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DeviceInfo {
+    platform: &'static str,
+    version: &'static str,
+    mobile: bool,
+    debug: bool,
+}
+
 #[derive(Deserialize)]
-struct ReadyEvent {
-    event: String,
-    port: u16,
+#[serde(rename_all = "camelCase")]
+struct FetchSourceArgs {
+    url: String,
+    #[serde(default)]
+    headers: SessionHeaders,
+    #[serde(default)]
+    max_bytes: Option<usize>,
+    #[serde(default)]
+    timeout_ms: Option<u64>,
+    #[serde(default)]
+    allow_private: bool,
 }
 
-#[derive(Default)]
-struct ServiceState {
-    child: Mutex<Option<CommandChild>>,
-    connection: RwLock<Option<ServiceConnection>>,
-    token: String,
-}
-
-impl ServiceState {
-    fn new() -> Self {
-        Self {
-            child: Mutex::new(None),
-            connection: RwLock::new(None),
-            token: Uuid::new_v4().simple().to_string(),
-        }
+#[tauri::command]
+fn proxy_info(state: State<'_, AppState>) -> ProxyInfo {
+    ProxyInfo {
+        base_url: state.proxy.base_url().to_string(),
+        token: state.proxy.token().to_string(),
     }
 }
 
 #[tauri::command]
-fn service_connection(state: State<'_, ServiceState>) -> Result<ServiceConnection, String> {
-    state
-        .connection
-        .read()
-        .map_err(|_| "No se pudo leer el estado del servicio".to_string())?
-        .clone()
-        .ok_or_else(|| "El servicio local todavía no está disponible".to_string())
-}
-
-#[cfg(not(debug_assertions))]
-fn start_service(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let app_handle = app.handle().clone();
-    let data_dir = app.path().app_data_dir()?;
-    std::fs::create_dir_all(&data_dir)?;
-    let database_path: PathBuf = data_dir.join("orivue.sqlite");
-    let token = app.state::<ServiceState>().token.clone();
-
-    let sidecar = app
-        .shell()
-        .sidecar("orivue-service")?
-        .env("ORIVUE_HOST", "127.0.0.1")
-        .env("ORIVUE_PORT", "0")
-        .env("ORIVUE_LOCAL_TOKEN", &token)
-        .env("ORIVUE_DATA_DIR", data_dir.as_os_str())
-        .env("ORIVUE_DB_PATH", database_path.as_os_str());
-
-    let (mut events, child) = sidecar.spawn()?;
-    app.state::<ServiceState>()
-        .child
-        .lock()
-        .map_err(|_| "No se pudo guardar el proceso del servicio")?
-        .replace(child);
-
-    tauri::async_runtime::spawn(async move {
-        while let Some(event) = events.recv().await {
-            match event {
-                CommandEvent::Stdout(bytes) => {
-                    let Ok(line) = std::str::from_utf8(&bytes) else {
-                        continue;
-                    };
-                    let Ok(ready) = serde_json::from_str::<ReadyEvent>(line.trim()) else {
-                        continue;
-                    };
-                    if ready.event != "ready" || ready.port == 0 {
-                        continue;
-                    }
-
-                    if let Ok(mut connection) =
-                        app_handle.state::<ServiceState>().connection.write()
-                    {
-                        connection.replace(ServiceConnection {
-                            base_url: format!("http://127.0.0.1:{}", ready.port),
-                            token: token.clone(),
-                        });
-                    }
-                    let _ = app_handle.emit("orivue-service-status", "ready");
-                }
-                CommandEvent::Terminated(_) => {
-                    if let Ok(mut connection) =
-                        app_handle.state::<ServiceState>().connection.write()
-                    {
-                        connection.take();
-                    }
-                    let _ = app_handle.emit("orivue-service-status", "stopped");
-                    break;
-                }
-                _ => {}
-            }
-        }
-    });
-
-    Ok(())
-}
-
-#[cfg(debug_assertions)]
-fn start_service(_app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    Ok(())
-}
-
-fn stop_service(app: &tauri::AppHandle) {
-    let state = app.state::<ServiceState>();
-    if let Ok(mut child) = state.child.lock() {
-        if let Some(child) = child.take() {
-            let _ = child.kill();
-        }
+fn device_info() -> DeviceInfo {
+    DeviceInfo {
+        platform: std::env::consts::OS,
+        version: env!("CARGO_PKG_VERSION"),
+        mobile: cfg!(any(target_os = "android", target_os = "ios")),
+        debug: cfg!(debug_assertions),
     }
-    if let Ok(mut connection) = state.connection.write() {
-        connection.take();
-    };
+}
+
+/// Downloads a playlist, guide or JSON document and returns the raw bytes.
+#[tauri::command]
+async fn fetch_source(
+    state: State<'_, AppState>,
+    args: FetchSourceArgs,
+) -> Result<tauri::ipc::Response, String> {
+    let fetched = state
+        .proxy
+        .fetch_text(
+            &args.url,
+            FetchTextOptions {
+                headers: args.headers,
+                max_bytes: args.max_bytes.unwrap_or(MAX_FETCH_BYTES).min(MAX_FETCH_BYTES),
+                timeout: Duration::from_millis(args.timeout_ms.unwrap_or(60_000).clamp(1_000, 300_000)),
+                policy: if args.allow_private {
+                    DestinationPolicy::AllowPrivate
+                } else {
+                    DestinationPolicy::PublicOnly
+                },
+            },
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(tauri::ipc::Response::new(fetched.text.into_bytes()))
+}
+
+#[tauri::command]
+async fn open_playback(
+    state: State<'_, AppState>,
+    request: OpenSession,
+) -> Result<SessionInfo, String> {
+    // Only one playback session at a time: a channel change tears the previous one down.
+    state.proxy.close_all();
+    state.proxy.open(request).await.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn close_playback(state: State<'_, AppState>, id: String) -> bool {
+    state.proxy.close(&id)
+}
+
+fn kv_path(state: &AppState, key: &str) -> Result<PathBuf, String> {
+    if key.is_empty()
+        || key.len() > 64
+        || !key
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+    {
+        return Err("invalid key".into());
+    }
+    Ok(state.kv_dir.join(format!("{key}.json")))
+}
+
+#[tauri::command]
+fn kv_get(state: State<'_, AppState>, key: String) -> Result<Option<String>, String> {
+    let path = kv_path(&state, &key)?;
+    match std::fs::read_to_string(&path) {
+        Ok(value) => Ok(Some(value)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[tauri::command]
+fn kv_set(state: State<'_, AppState>, key: String, value: String) -> Result<(), String> {
+    if value.len() > MAX_KV_BYTES {
+        return Err("value too large".into());
+    }
+    let path = kv_path(&state, &key)?;
+    std::fs::create_dir_all(&state.kv_dir).map_err(|error| error.to_string())?;
+    let temporary = path.with_extension("json.tmp");
+    std::fs::write(&temporary, value).map_err(|error| error.to_string())?;
+    std::fs::rename(&temporary, &path).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn kv_delete(state: State<'_, AppState>, key: String) -> Result<(), String> {
+    let path = kv_path(&state, &key)?;
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn proxy_options(dev: bool) -> ProxyOptions {
+    let mut options = ProxyOptions::default();
+    if !dev {
+        options
+            .allowed_origins
+            .retain(|origin| origin.contains("tauri"));
+    }
+    options
 }
 
 pub fn run() {
-    let app = tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
-        .manage(ServiceState::new())
-        .invoke_handler(tauri::generate_handler![service_connection])
+    let builder = tauri::Builder::default();
+    #[cfg(mobile)]
+    let builder = builder.plugin(tauri_plugin_orivue_native::init());
+    let app = builder
+        .invoke_handler(tauri::generate_handler![
+            proxy_info,
+            device_info,
+            fetch_source,
+            open_playback,
+            close_playback,
+            kv_get,
+            kv_set,
+            kv_delete
+        ])
         .setup(|app| {
-            start_service(app)?;
+            let data_dir = app.path().app_data_dir()?;
+            std::fs::create_dir_all(&data_dir)?;
+            let proxy = tauri::async_runtime::block_on(ProxyServer::start(proxy_options(
+                tauri::is_dev(),
+            )))?;
+            app.manage(AppState {
+                proxy,
+                kv_dir: data_dir.join("kv"),
+            });
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -152,7 +196,9 @@ pub fn run() {
 
     app.run(|app_handle, event| {
         if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
-            stop_service(app_handle);
+            if let Some(state) = app_handle.try_state::<AppState>() {
+                state.proxy.shutdown();
+            }
         }
     });
 }

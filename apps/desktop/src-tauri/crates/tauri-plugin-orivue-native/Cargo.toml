@@ -1,0 +1,18 @@
+[package]
+name = "tauri-plugin-orivue-native"
+version = "0.1.0"
+authors = ["Jaime and contributors"]
+description = "Native media player, back-button and device information for Orivue on Android, Fire TV and iOS"
+license = "MIT"
+edition = "2021"
+rust-version = "1.84"
+links = "tauri-plugin-orivue-native"
+
+[dependencies]
+tauri = { version = "2" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }

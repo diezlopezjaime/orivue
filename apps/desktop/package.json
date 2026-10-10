@@ -1,21 +1,25 @@
 {
   "name": "@orivue/desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Orivue desktop shell built with Tauri 2",
+  "description": "Orivue application shell built with Tauri 2 (desktop, Android, Fire TV, iOS)",
   "license": "MIT",
   "type": "module",
   "scripts": {
     "tauri": "tauri",
-    "desktop:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
-    "desktop:build": "pnpm prepare:sidecar && tauri build",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build",
     "desktop:build:ci": "tauri build --no-bundle",
     "desktop:check": "cargo check --manifest-path src-tauri/Cargo.toml",
-    "prepare:sidecar": "node scripts/prepare-sidecar.mjs",
+    "android:init": "tauri android init",
+    "android:dev": "tauri android dev",
+    "android:build": "tauri android build --apk --target aarch64 --target armv7 --target x86_64",
+    "ios:init": "tauri ios init",
+    "ios:dev": "tauri ios dev",
+    "ios:build": "tauri ios build",
     "icons": "tauri icon src-tauri/icons/orivue-source.svg --output src-tauri/icons"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "2.11.4",
-    "@yao-pkg/pkg": "6.21.0"
+    "@tauri-apps/cli": "2.11.4"
   }
 }

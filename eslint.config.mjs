@@ -35,10 +35,6 @@ export default tseslint.config(
     },
   },
   {
-    files: ['apps/server/src/app.ts'],
-    rules: { '@typescript-eslint/require-await': 'off' },
-  },
-  {
     files: ['**/*.js', '**/*.mjs', '**/*.config.ts'],
     extends: [tseslint.configs.disableTypeChecked],
   },

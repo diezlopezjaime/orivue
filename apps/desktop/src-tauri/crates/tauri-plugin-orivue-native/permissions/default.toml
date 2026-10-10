@@ -1,0 +1,13 @@
+[default]
+description = "Reproductor nativo, botón atrás e información del dispositivo"
+permissions = [
+  "allow-load",
+  "allow-stop",
+  "allow-set-paused",
+  "allow-set-volume",
+  "allow-set-aspect",
+  "allow-select-track",
+  "allow-get-tracks",
+  "allow-set-back-handling",
+  "allow-get-device-info",
+]

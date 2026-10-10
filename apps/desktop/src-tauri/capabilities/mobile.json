@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile",
+  "description": "Plugin nativo (reproductor Media3, botón atrás, información del dispositivo)",
+  "platforms": ["android", "iOS"],
+  "windows": ["main"],
+  "permissions": ["orivue-native:default"]
+}
