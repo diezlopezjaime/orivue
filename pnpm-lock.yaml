@@ -148,6 +148,31 @@ importers:
 
   packages/core: {}
 
+  packages/engine:
+    dependencies:
+      '@orivue/core':
+        specifier: workspace:*
+        version: link:../core
+      '@orivue/m3u-parser':
+        specifier: workspace:*
+        version: link:../m3u-parser
+      '@orivue/stream-resolvers':
+        specifier: workspace:*
+        version: link:../stream-resolvers
+      '@orivue/xmltv-parser':
+        specifier: workspace:*
+        version: link:../xmltv-parser
+      '@orivue/xtream':
+        specifier: workspace:*
+        version: link:../xtream
+      idb:
+        specifier: ^8.0.4
+        version: 8.0.4
+    devDependencies:
+      fake-indexeddb:
+        specifier: ^6.2.5
+        version: 6.2.5
+
   packages/m3u-parser:
     dependencies:
       '@orivue/core':
@@ -1403,6 +1428,10 @@ packages:
     resolution: {integrity: sha512-KfYbmpRm0VbLjEvVa9yGwCi9GI34xvi7A/HXYWQO65CSD2u3MczUJSuwXKFIxlGsgBQizV9q5J9NHj4VG0n+pA==}
     engines: {node: '>=12.0.0'}
 
+  fake-indexeddb@6.2.5:
+    resolution: {integrity: sha512-CGnyrvbhPlWYMngksqrSSUT1BAVP49dZocrHuK0SvtR0D5TMs5wP0o3j7jexDJW01KSadjBp1M/71o/KR3nD1w==}
+    engines: {node: '>=18'}
+
   fast-decode-uri-component@1.0.1:
     resolution: {integrity: sha512-WKgKWg5eUxvRZGwW8FvfbaH7AXSh2cL+3j5fMGzUMCxWBJ3dV3a7Wz8y2f/uQ0e3B6WmodD3oS54jTQ9HVTIIg==}
 
@@ -1554,6 +1583,9 @@ packages:
   iconv-lite@0.6.3:
     resolution: {integrity: sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==}
     engines: {node: '>=0.10.0'}
+
+  idb@8.0.4:
+    resolution: {integrity: sha512-jd0ITCrN+Zah4J7R/Z2jnR3W7A4BXDAjmo62MwWuSjxCiueUAf7X5rbodEdidWzeknwXHmLpdZkoiiCppNi30Q==}
 
   ieee754@1.2.1:
     resolution: {integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==}
@@ -3725,6 +3757,8 @@ snapshots:
 
   expect-type@1.4.0: {}
 
+  fake-indexeddb@6.2.5: {}
+
   fast-decode-uri-component@1.0.1: {}
 
   fast-deep-equal@3.1.3: {}
@@ -3885,6 +3919,8 @@ snapshots:
   iconv-lite@0.6.3:
     dependencies:
       safer-buffer: 2.1.2
+
+  idb@8.0.4: {}
 
   ieee754@1.2.1: {}
 

@@ -1,0 +1,28 @@
+{
+  "name": "@orivue/engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@orivue/core": "workspace:*",
+    "@orivue/m3u-parser": "workspace:*",
+    "@orivue/stream-resolvers": "workspace:*",
+    "@orivue/xmltv-parser": "workspace:*",
+    "@orivue/xtream": "workspace:*",
+    "idb": "^8.0.4"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.5"
+  }
+}
