@@ -1,11 +1,17 @@
 import { stableId } from '@orivue/core';
-import { parseM3u } from '@orivue/m3u-parser';
+import {
+  channelId as buildChannelId,
+  parseM3u,
+  type Channel as ParsedChannel,
+  type ChannelIdentity,
+} from '@orivue/m3u-parser';
 import { extractAceContentId } from '@orivue/stream-resolvers';
 import { parseXmltv } from '@orivue/xmltv-parser';
 import {
   buildApiUrl,
   buildEpgUrl,
   buildEpisodeUrl,
+  buildLiveUrl,
   buildMovieUrl,
   buildPlaylistUrl,
   buildSeriesInfoUrl,
@@ -13,12 +19,14 @@ import {
   fetchAccountInfo,
   isVodStreamUrl,
   parseCategories,
+  parseLiveStreams,
   parseMovies,
   parseSeriesInfo,
   parseSeriesList,
   parseXtreamUrl,
   type XtreamAccountInfo,
   type XtreamCredentials,
+  type XtreamOutput,
 } from '@orivue/xtream';
 import type { EnginePlatform } from './platform.js';
 import { safeError, safeUrl } from './redact.js';
@@ -59,7 +67,7 @@ const SERIES_INFO_TTL = 24 * 3_600_000;
 export const DEFAULT_SETTINGS: EngineSettings = {
   allowPrivateNetwork: false,
   epgHorizonHours: 72,
-  maxPlaylistBytes: 60 * 1024 * 1024,
+  maxPlaylistBytes: 120 * 1024 * 1024,
   maxEpgBytes: 120 * 1024 * 1024,
 };
 
@@ -317,32 +325,32 @@ export class OrivueEngine {
     this.emit({ type: 'refresh', sourceId: id, phase: 'start' });
     try {
       const warnings: string[] = [];
-      let content: string;
+      let entries: ParsedChannel[];
+      let discoveredEpgUrl: string | undefined;
       let account: XtreamAccountInfo | null = source.account;
       if (source.kind === 'file') {
-        content = (await this.storage.readSourceContent(id)) ?? '';
-      } else {
-        const url =
-          source.kind === 'xtream'
-            ? buildPlaylistUrl(source.xtream!, source.xtream!.output)
-            : source.url!;
-        if (source.kind === 'xtream') {
-          try {
-            account = await this.fetchAccount(source.xtream!);
-          } catch (error) {
-            if ((error as { code?: string }).code === 'auth-failed') throw error;
-            warnings.push('No se pudo leer la información de la cuenta Xtream.');
-          }
+        const content = (await this.storage.readSourceContent(id)) ?? '';
+        ({ channels: entries, epgUrl: discoveredEpgUrl } = this.parsePlaylist(
+          id,
+          content,
+          warnings,
+        ));
+      } else if (source.kind === 'xtream') {
+        try {
+          account = await this.fetchAccount(source.xtream!);
+        } catch (error) {
+          if ((error as { code?: string }).code === 'auth-failed') throw error;
+          warnings.push('No se pudo leer la información de la cuenta Xtream.');
         }
-        content = await this.platform.fetchText(url, {
-          maxBytes: this.settings.maxPlaylistBytes,
-          timeoutMs: 60_000,
-          allowPrivateNetwork: this.settings.allowPrivateNetwork,
-        });
+        entries = await this.fetchXtreamLive(id, source.xtream!, warnings);
+      } else {
+        const content = await this.fetchPlaylist(source.url!);
+        ({ channels: entries, epgUrl: discoveredEpgUrl } = this.parsePlaylist(
+          id,
+          content,
+          warnings,
+        ));
       }
-      if (!content.trim()) throw new Error('The playlist is empty');
-      const parsed = parseM3u(content, { sourceId: id });
-      warnings.push(...parsed.warnings.slice(0, 20).map((warning) => warning.message));
       let catalogue: { movies: VodItem[]; series: VodItem[] } | undefined;
       if (source.kind === 'xtream') {
         try {
@@ -355,8 +363,8 @@ export class OrivueEngine {
       }
       // With a catalogue the on-demand entries of the M3U are redundant in the live list.
       const liveEntries = catalogue
-        ? parsed.channels.filter((channel) => !isVodStreamUrl(channel.url))
-        : parsed.channels;
+        ? entries.filter((channel) => !isVodStreamUrl(channel.url))
+        : entries;
       if (liveEntries.length === 0 && !catalogue)
         throw new Error('The playlist did not contain any playable channels');
       const channels: StoredChannel[] = liveEntries.map((channel, order) => {
@@ -384,7 +392,7 @@ export class OrivueEngine {
       this.rebuildIndex();
       const now = new Date(this.now()).toISOString();
       let epgUrl = source.epgUrl;
-      if (!epgUrl && parsed.epgUrl) epgUrl = parsed.epgUrl;
+      if (!epgUrl && discoveredEpgUrl) epgUrl = discoveredEpgUrl;
       this.replaceSource({
         ...this.requireSource(id),
         status: 'ready',
@@ -435,6 +443,88 @@ export class OrivueEngine {
     } finally {
       this.refreshing.delete(id);
     }
+  }
+
+  private parsePlaylist(
+    id: string,
+    content: string,
+    warnings: string[],
+  ): { channels: ParsedChannel[]; epgUrl: string | undefined } {
+    if (!content.trim()) throw new Error('The playlist is empty');
+    const parsed = parseM3u(content, { sourceId: id });
+    warnings.push(...parsed.warnings.slice(0, 20).map((warning) => warning.message));
+    return { channels: parsed.channels, epgUrl: parsed.epgUrl };
+  }
+
+  private async fetchPlaylist(url: string): Promise<string> {
+    const maxBytes = this.settings.maxPlaylistBytes;
+    try {
+      return await this.platform.fetchText(url, {
+        maxBytes,
+        timeoutMs: 60_000,
+        allowPrivateNetwork: this.settings.allowPrivateNetwork,
+      });
+    } catch (error) {
+      if (/size limit/i.test(safeError(error)))
+        throw new Error(`The playlist exceeds the ${Math.round(maxBytes / 1_048_576)} MB limit`);
+      throw error;
+    }
+  }
+
+  /**
+   * Live channels of an Xtream account. The panel API (`get_live_streams`)
+   * only lists live streams, so it stays small even when the `get.php`
+   * playlist, which also embeds every movie and episode, is hundreds of MB.
+   * The playlist is the fallback for panels that block the API.
+   */
+  private async fetchXtreamLive(
+    id: string,
+    credentials: XtreamCredentials & { output: XtreamOutput },
+    warnings: string[],
+  ): Promise<ParsedChannel[]> {
+    try {
+      const live = await this.fetchLiveStreams(id, credentials);
+      if (live.length) return live;
+      warnings.push('The panel API listed no live channels; the get.php playlist was used.');
+    } catch (error) {
+      warnings.push(`Live API: ${safeError(error)}; the get.php playlist was used.`);
+    }
+    const content = await this.fetchPlaylist(buildPlaylistUrl(credentials, credentials.output));
+    return this.parsePlaylist(id, content, warnings).channels;
+  }
+
+  private async fetchLiveStreams(
+    id: string,
+    credentials: XtreamCredentials & { output: XtreamOutput },
+  ): Promise<ParsedChannel[]> {
+    const [categories, streams] = await Promise.all([
+      this.fetchJson(buildApiUrl(credentials, 'get_live_categories')).then(parseCategories),
+      this.fetchJson(buildApiUrl(credentials, 'get_live_streams')).then(parseLiveStreams),
+    ]);
+    const categoryNames = new Map(categories.map((category) => [category.id, category.name]));
+    const seen = new Set<string>();
+    const result: ParsedChannel[] = [];
+    for (const stream of streams) {
+      const groupName = stream.categoryId ? categoryNames.get(stream.categoryId) : undefined;
+      const entry: ChannelIdentity = {
+        name: stream.name,
+        url: buildLiveUrl(credentials, stream.id, credentials.output),
+        groupName,
+        tvgId: stream.epgChannelId ?? undefined,
+      };
+      const channelId = buildChannelId(id, entry);
+      if (seen.has(channelId)) continue;
+      seen.add(channelId);
+      result.push({
+        id: channelId,
+        name: entry.name,
+        url: entry.url,
+        ...(groupName ? { groupName } : {}),
+        ...(entry.tvgId ? { tvgId: entry.tvgId } : {}),
+        ...(stream.icon ? { logo: stream.icon } : {}),
+      });
+    }
+    return result;
   }
 
   async refreshEpg(id: string): Promise<{ programCount: number; warnings: string[] }> {

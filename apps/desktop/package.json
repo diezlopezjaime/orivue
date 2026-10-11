@@ -1,6 +1,6 @@
 {
   "name": "@orivue/desktop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Orivue application shell built with Tauri 2 (desktop, Android, Fire TV, iOS)",
   "license": "MIT",

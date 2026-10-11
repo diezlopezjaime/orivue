@@ -397,7 +397,7 @@ export function parseSeriesInfo(payload: unknown): XtreamSeriesInfo {
 
 function streamUrl(
   credentials: XtreamCredentials,
-  kind: 'movie' | 'series',
+  kind: 'live' | 'movie' | 'series',
   id: string,
   extension: string,
 ): string {
@@ -424,6 +424,50 @@ export function buildSeriesInfoUrl(credentials: XtreamCredentials, seriesId: str
   const url = new URL(buildApiUrl(credentials, 'get_series_info'));
   url.searchParams.set('series_id', seriesId);
   return url.toString();
+}
+
+export interface XtreamLiveStream {
+  readonly id: string;
+  readonly name: string;
+  readonly categoryId: string | null;
+  readonly icon: string | null;
+  readonly epgChannelId: string | null;
+  readonly number: number | null;
+}
+
+/**
+ * Parses `get_live_streams`. Only the fields Orivue needs are kept; entries
+ * without an id or a name are skipped instead of failing the whole import.
+ */
+export function parseLiveStreams(payload: unknown): XtreamLiveStream[] {
+  if (!Array.isArray(payload)) return [];
+  const result: XtreamLiveStream[] = [];
+  for (const item of payload) {
+    const record = asRecord(item);
+    const id = idText(record.stream_id);
+    const name = asText(record.name);
+    if (!id || !name) continue;
+    const type = asText(record.stream_type);
+    if (type && type !== 'live') continue;
+    result.push({
+      id,
+      name,
+      categoryId: idText(record.category_id),
+      icon: asText(record.stream_icon),
+      epgChannelId: asText(record.epg_channel_id),
+      number: asNumber(record.num),
+    });
+  }
+  return result;
+}
+
+/** Live stream URL in the layout every Xtream panel serves: `/live/user/pass/id.ext`. */
+export function buildLiveUrl(
+  credentials: XtreamCredentials,
+  streamId: string,
+  output: XtreamOutput = 'ts',
+): string {
+  return streamUrl(credentials, 'live', streamId, output);
 }
 
 /** Stream URLs that belong to the VOD catalogue rather than the live list. */
