@@ -29,6 +29,26 @@ ${PANEL}/live/alice/s3cret/1
 ${PANEL}/live/alice/s3cret/2
 `;
 
+const LIVE_CATEGORIES = JSON.stringify([
+  { category_id: '1', category_name: 'Noticias' },
+  { category_id: '2', category_name: 'Deportes' },
+]);
+
+const LIVE_STREAMS = JSON.stringify([
+  {
+    num: 1,
+    name: 'Noticias 24',
+    stream_type: 'live',
+    stream_id: 1,
+    stream_icon: 'http://img/news.png',
+    epg_channel_id: 'news.es',
+    category_id: '1',
+  },
+  { num: 2, name: 'Deporte Total', stream_id: 2, epg_channel_id: 'sport.es', category_id: '2' },
+  { num: 3, name: 'Deporte Total', stream_id: 2, epg_channel_id: 'sport.es', category_id: '2' },
+  { num: 4, name: 'Sin id', category_id: '2' },
+]);
+
 const EPG = `<?xml version="1.0" encoding="UTF-8"?>
 <tv>
   <channel id="News.ES"><display-name>Noticias 24</display-name></channel>
@@ -64,14 +84,17 @@ function fakePlatform(responses: Record<string, string | (() => string)>) {
 }
 
 let counter = 0;
-async function createEngine(responses: Record<string, string | (() => string)>) {
+async function createEngine(
+  responses: Record<string, string | (() => string)>,
+  randomId?: () => string,
+) {
   const { platform, requests } = fakePlatform(responses);
   counter += 1;
   const engine = new OrivueEngine({
     platform,
     databaseName: `orivue-test-${counter}`,
     now: () => NOW,
-    randomId: () => `id${counter}-${Math.random().toString(36).slice(2, 8)}`,
+    randomId: randomId ?? (() => `id${counter}-${Math.random().toString(36).slice(2, 8)}`),
   });
   await engine.init();
   return { engine, platform, requests };
@@ -126,7 +149,13 @@ describe('OrivueEngine sources', () => {
   it('detects Xtream URLs pasted as M3U and builds the right requests', async () => {
     const { engine, requests } = await createEngine({
       [`${PANEL}/player_api.php`]: JSON.stringify(ACCOUNT),
-      [`${PANEL}/get.php`]: XTREAM_PLAYLIST,
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_live_categories`]:
+        LIVE_CATEGORIES,
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_live_streams`]:
+        LIVE_STREAMS,
+      [`${PANEL}/get.php`]: () => {
+        throw new Error('get.php must not be downloaded when the API works');
+      },
       [`${PANEL}/xmltv.php`]: EPG,
     });
     const source = await engine.addSource({
@@ -141,13 +170,85 @@ describe('OrivueEngine sources', () => {
     expect(result.channelCount).toBe(2);
     expect(requests.filter((url) => !url.includes('action='))).toEqual([
       `${PANEL}/player_api.php?username=alice&password=s3cret`,
-      `${PANEL}/get.php?username=alice&password=s3cret&type=m3u_plus&output=ts`,
       `${PANEL}/xmltv.php?username=alice&password=s3cret`,
     ]);
-    expect(requests.filter((url) => url.includes('action='))).toHaveLength(4);
+    expect(requests.filter((url) => url.includes('action='))).toHaveLength(6);
     expect(engine.getSource(source.id)?.account?.maxConnections).toBe(1);
     const channel = engine.listChannels().items[0]!;
+    expect(channel.name).toBe('Noticias 24');
+    expect(channel.groupName).toBe('Noticias');
+    expect(channel.logo).toBe('http://img/news.png');
     expect(channel.streamKind).toBe('mpegts');
+    expect(JSON.stringify(engine.listChannels())).not.toContain('s3cret');
+    const playable = await engine.getPlayable(channel.id);
+    expect(playable.url).toBe(`${PANEL}/live/alice/s3cret/1.ts`);
+  });
+
+  it('falls back to the get.php playlist when the live API is unavailable', async () => {
+    const { engine, requests } = await createEngine({
+      [`${PANEL}/player_api.php`]: JSON.stringify(ACCOUNT),
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=`]: () => {
+        throw new Error('HTTP 512');
+      },
+      [`${PANEL}/get.php`]: XTREAM_PLAYLIST,
+    });
+    const source = await engine.addSource({
+      kind: 'xtream',
+      name: 'Panel',
+      host: PANEL,
+      username: 'alice',
+      password: 's3cret',
+      output: 'm3u8',
+    });
+    const result = await engine.refreshSource(source.id);
+    expect(result.channelCount).toBe(2);
+    expect(result.warnings.some((warning) => warning.startsWith('Live API:'))).toBe(true);
+    expect(requests).toContain(
+      `${PANEL}/get.php?username=alice&password=s3cret&type=m3u_plus&output=m3u8`,
+    );
+  });
+
+  it('keeps channel ids stable between the live API and the playlist', async () => {
+    // Same source id in both engines so only the importer differs.
+    const fixedId = () => 'source-fixed';
+    const api = await createEngine(
+      {
+        [`${PANEL}/player_api.php`]: JSON.stringify(ACCOUNT),
+        [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_live_categories`]:
+          LIVE_CATEGORIES,
+        [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_live_streams`]:
+          LIVE_STREAMS,
+      },
+      fixedId,
+    );
+    const playlist = await createEngine(
+      {
+        [`${PANEL}/player_api.php`]: JSON.stringify(ACCOUNT),
+        [`${PANEL}/get.php`]: XTREAM_PLAYLIST,
+      },
+      fixedId,
+    );
+    const input = { kind: 'xtream' as const, name: 'P', host: PANEL, username: 'alice' };
+    const fromApi = await api.engine.addSource({ ...input, password: 's3cret' });
+    const fromPlaylist = await playlist.engine.addSource({ ...input, password: 's3cret' });
+    expect(fromApi.id).toBe(fromPlaylist.id);
+    await api.engine.refreshSource(fromApi.id);
+    await playlist.engine.refreshSource(fromPlaylist.id);
+    const ids = (items: { id: string }[]) => new Set(items.map((item) => item.id));
+    // Both channels carry an epg id, which is the identity the id derives from.
+    expect(ids(api.engine.listChannels().items)).toEqual(ids(playlist.engine.listChannels().items));
+  });
+
+  it('explains the playlist size limit instead of leaking the transport error', async () => {
+    const { engine } = await createEngine({
+      [`${PANEL}/list.m3u`]: () => {
+        throw new Error('the stream could not be reached: the source exceeds the size limit');
+      },
+    });
+    const source = await engine.addSource({ kind: 'm3u', name: 'Big', url: `${PANEL}/list.m3u` });
+    await expect(engine.refreshSource(source.id)).rejects.toThrow(
+      /The playlist exceeds the 120 MB limit/,
+    );
   });
 
   it('creates Xtream sources from host, username and password and rejects bad credentials', async () => {
@@ -384,6 +485,10 @@ ${PANEL}/movie/alice/s3cret/1.mkv
       [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_series`]: SERIES,
       [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_series_info`]:
         SERIES_INFO,
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_live_categories`]:
+        LIVE_CATEGORIES,
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_live_streams`]:
+        LIVE_STREAMS,
       [`${PANEL}/player_api.php`]: JSON.stringify(ACCOUNT),
       [`${PANEL}/get.php`]: XTREAM_WITH_VOD,
       [`${PANEL}/xmltv.php`]: EPG,

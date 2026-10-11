@@ -120,10 +120,12 @@ export function parseM3u(input: string, options: M3uParseOptions = {}): M3uParse
     const parsedUrl = parseUrlAndHeaders(line, entry.headers, warnings, lineNumber);
     if (!parsedUrl) continue;
 
-    const identity = entry.tvgId
-      ? [sourceId, 'tvg', entry.tvgId, entry.name]
-      : [sourceId, 'fallback', entry.name, entry.groupName ?? '', urlIdentity(parsedUrl.url)];
-    const id = stableId('channel', ...identity);
+    const id = channelId(sourceId, {
+      name: entry.name,
+      groupName: entry.groupName,
+      tvgId: entry.tvgId,
+      url: parsedUrl.url,
+    });
     if (seen.has(id)) {
       warnings.push(safeWarning(lineNumber, 'duplicate', 'A duplicate channel entry was ignored.'));
       continue;
@@ -300,6 +302,30 @@ function isPlayableUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+export interface ChannelIdentity {
+  readonly name: string;
+  readonly url: string;
+  readonly groupName?: string | undefined;
+  readonly tvgId?: string | undefined;
+}
+
+/**
+ * Deterministic channel id shared by every importer (M3U text and the Xtream
+ * API), so favourites and custom names survive a switch between them.
+ */
+export function channelId(sourceId: string, entry: ChannelIdentity): string {
+  return entry.tvgId
+    ? stableId('channel', sourceId, 'tvg', entry.tvgId, entry.name)
+    : stableId(
+        'channel',
+        sourceId,
+        'fallback',
+        entry.name,
+        entry.groupName ?? '',
+        urlIdentity(entry.url),
+      );
 }
 
 function urlIdentity(value: string): string {

@@ -141,9 +141,17 @@ guárdalas en `.env.local` (ignorado por git) y nunca en fixtures ni tests.
 
 Pega la URL `http://panel/get.php?username=…&password=…&type=m3u_plus&output=ts`
 en el formulario de URL o rellena host, usuario y contraseña en la pestaña
-Xtream. Orivue valida la cuenta en `player_api.php`, descarga la lista
-`m3u_plus`, carga la guía de `xmltv.php` y muestra estado, caducidad y
-conexiones. Elige `MPEG-TS` (recomendado) o `HLS` como formato de stream.
+Xtream. Orivue valida la cuenta en `player_api.php`, obtiene los canales en
+directo de la API (`get_live_categories` y `get_live_streams`), el catálogo a
+la carta de `get_vod_streams`/`get_series`, carga la guía de `xmltv.php` y
+muestra estado, caducidad y conexiones. Elige `MPEG-TS` (recomendado) o `HLS`
+como formato de stream.
+
+La lista `get.php` solo se descarga si el panel bloquea la API: incluye todas
+las películas y episodios y en proveedores grandes supera los 100 MB. El
+límite para esa descarga es de 120 MB (`maxPlaylistBytes`) y el de la guía
+XMLTV de 120 MB (`maxEpgBytes`); si la guía lo supera, los canales se importan
+igualmente y Mis listas muestra el aviso.
 
 ## Ace Stream opcional
 

@@ -4,7 +4,20 @@ Todos los cambios notables se documentarán aquí. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
 [versionado semántico](https://semver.org/lang/es/).
 
-## Unreleased (0.2.0)
+## 0.2.1
+
+### Corregido
+
+- Las cuentas Xtream Codes obtienen los canales en directo de la API
+  (`get_live_streams`) en lugar de descargar la lista `get.php` completa, que
+  incluye todo el catálogo a la carta y en proveedores grandes superaba el
+  límite de tamaño ("the source exceeds the size limit"). La lista `get.php`
+  queda como reserva, con el límite ampliado a 120 MB, y el error de tamaño
+  ahora indica el límite.
+- Los ids de canal son los mismos con ambos importadores, así que favoritos y
+  nombres personalizados se conservan.
+
+## 0.2.0
 
 ### Añadido
 

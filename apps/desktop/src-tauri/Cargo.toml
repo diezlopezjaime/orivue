@@ -1,6 +1,6 @@
 [package]
 name = "orivue-desktop"
-version = "0.2.0"
+version = "0.2.1"
 description = "Local-first Orivue application for desktop, Android, Fire TV and iOS"
 authors = ["Jaime and contributors"]
 license = "MIT"

@@ -3,11 +3,13 @@ import {
   buildApiUrl,
   buildEpgUrl,
   buildEpisodeUrl,
+  buildLiveUrl,
   buildMovieUrl,
   buildPlaylistUrl,
   buildSeriesInfoUrl,
   isVodStreamUrl,
   parseCategories,
+  parseLiveStreams,
   parseMovies,
   parseSeriesInfo,
   parseSeriesList,
@@ -207,6 +209,38 @@ describe('VOD catalogue', () => {
     expect(object.seasons[1]?.episodes[0]).toMatchObject({ id: '22', durationSeconds: 1500 });
     const array = parseSeriesInfo({ episodes: [[{ id: '1' }], [{ id: '2', episode_num: 1 }]] });
     expect(array.seasons.map((season) => season.episodes[0]?.id)).toEqual(['1', '2']);
+  });
+
+  it('parses live streams and builds their URLs', () => {
+    expect(
+      parseLiveStreams([
+        {
+          num: 7,
+          name: ' Canal Uno ',
+          stream_type: 'live',
+          stream_id: 42,
+          stream_icon: 'http://img/1.png',
+          epg_channel_id: 'uno.es',
+          category_id: 3,
+        },
+        { name: 'Radio', stream_type: 'radio_streams', stream_id: 43 },
+        { name: 'Sin id' },
+        { stream_id: '44', name: 'Mínimo' },
+      ]),
+    ).toEqual([
+      {
+        id: '42',
+        name: 'Canal Uno',
+        categoryId: '3',
+        icon: 'http://img/1.png',
+        epgChannelId: 'uno.es',
+        number: 7,
+      },
+      { id: '44', name: 'Mínimo', categoryId: null, icon: null, epgChannelId: null, number: null },
+    ]);
+    expect(parseLiveStreams({ error: 'x' })).toEqual([]);
+    expect(buildLiveUrl(credentials, '42')).toBe(`${PANEL}/live/alice/s3cret/42.ts`);
+    expect(buildLiveUrl(credentials, '42', 'm3u8')).toBe(`${PANEL}/live/alice/s3cret/42.m3u8`);
   });
 
   it('builds VOD URLs and recognises them', () => {
