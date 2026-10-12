@@ -157,6 +157,27 @@ a:focus-visible,
   background: var(--danger);
   box-shadow: none;
 }
+.status-dot.busy {
+  animation: status-pulse 1.2s ease-in-out infinite;
+}
+@keyframes status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+.playlist-warnings {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.playlist-warnings li {
+  overflow-wrap: anywhere;
+}
 .page {
   min-width: 0;
   display: flex;

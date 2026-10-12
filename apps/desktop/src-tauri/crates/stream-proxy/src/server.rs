@@ -247,11 +247,15 @@ impl ProxyHandle {
                 return Err(ProxyError::UpstreamStatus(status));
             }
             let content_type = header_string(response.headers(), header::CONTENT_TYPE);
+            let limit_error = || {
+                ProxyError::Upstream(format!(
+                    "the source exceeds the size limit of {} MB",
+                    options.max_bytes / (1024 * 1024)
+                ))
+            };
             if let Some(length) = response.content_length() {
                 if length as usize > options.max_bytes {
-                    return Err(ProxyError::Upstream(
-                        "the source exceeds the size limit".into(),
-                    ));
+                    return Err(limit_error());
                 }
             }
             let mut stream = response.bytes_stream();
@@ -259,9 +263,7 @@ impl ProxyHandle {
             while let Some(chunk) = stream.next().await {
                 let chunk = chunk.map_err(|error| ProxyError::Upstream(error.to_string()))?;
                 if buffer.len() + chunk.len() > options.max_bytes {
-                    return Err(ProxyError::Upstream(
-                        "the source exceeds the size limit".into(),
-                    ));
+                    return Err(limit_error());
                 }
                 buffer.extend_from_slice(&chunk);
             }
@@ -274,7 +276,12 @@ impl ProxyHandle {
         };
         tokio::time::timeout(options.timeout, work)
             .await
-            .map_err(|_| ProxyError::Upstream("timeout".into()))?
+            .map_err(|_| {
+                ProxyError::Upstream(format!(
+                    "no response within {} s",
+                    options.timeout.as_secs()
+                ))
+            })?
     }
 }
 

@@ -30,14 +30,20 @@ export interface Source {
   readonly movieCount: number;
   readonly seriesCount: number;
   readonly account: XtreamAccountInfo | null;
+  /** Non-fatal notes from the last refresh, kept for diagnosis. */
+  readonly lastWarnings: string[];
   readonly createdAt: string;
   readonly updatedAt: string;
 }
+
+/** Stage of a refresh in progress, so the interface can say what it is waiting for. */
+export type RefreshStep = 'account' | 'live' | 'vod' | 'epg';
 
 /** Public shape of a source: identical to {@link Source} but with secrets redacted. */
 export type PublicSource = Omit<Source, 'url' | 'xtream'> & {
   readonly url: string | null;
   readonly xtream: Omit<XtreamSourceConfig, 'password'> | null;
+  readonly refreshing: RefreshStep | null;
 };
 
 export type AddSourceInput =
@@ -224,7 +230,7 @@ export type EngineEvent =
   | { type: 'channels'; sourceId: string }
   | { type: 'epg'; sourceId: string }
   | { type: 'library' }
-  | { type: 'refresh'; sourceId: string; phase: 'start' | 'done' | 'error' };
+  | { type: 'refresh'; sourceId: string; phase: 'start' | 'step' | 'done' | 'error' };
 
 export type EngineListener = (event: EngineEvent) => void;
 

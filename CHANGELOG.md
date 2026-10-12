@@ -16,6 +16,12 @@ Todos los cambios notables se documentarán aquí. El formato sigue
   ahora indica el límite.
 - Los ids de canal son los mismos con ambos importadores, así que favoritos y
   nombres personalizados se conservan.
+- Mis listas muestra en qué paso está una importación (cuenta, canales,
+  catálogo, guía), los avisos de la última actualización y los errores de los
+  botones de actualizar; los mensajes de límite de tamaño y de tiempo de espera
+  indican el valor del límite.
+- Una lista cuya primera importación no llegó a terminar (por ejemplo al cerrar
+  la app a medias) se reintenta sola al arrancar aunque esté en "Manual".
 
 ## 0.2.0
 

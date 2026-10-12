@@ -247,7 +247,7 @@ describe('OrivueEngine sources', () => {
     });
     const source = await engine.addSource({ kind: 'm3u', name: 'Big', url: `${PANEL}/list.m3u` });
     await expect(engine.refreshSource(source.id)).rejects.toThrow(
-      /The playlist exceeds the 120 MB limit/,
+      /^Channels: the playlist exceeds the 120 MB limit/,
     );
   });
 
@@ -308,17 +308,86 @@ describe('OrivueEngine sources', () => {
       url: 'https://lists.test/a',
       autoRefreshMinutes: 10,
     });
-    await engine.addSource({
+    const manual = await engine.addSource({
       kind: 'm3u',
       name: 'Manual',
       url: 'https://lists.test/b',
       autoRefreshMinutes: 0,
     });
+    await engine.refreshSource(manual.id);
     expect(await engine.refreshDue()).toEqual([due.id]);
     expect(requests.filter((url) => url.startsWith('https://lists'))).toEqual([
+      'https://lists.test/b',
       'https://lists.test/a',
     ]);
     expect(await engine.refreshDue()).toEqual([]);
+  });
+
+  it('finishes the first import of a manual source that never completed', async () => {
+    const { engine } = await createEngine({
+      'https://lists.test/ok': PLAYLIST,
+      'https://lists.test/broken': () => {
+        throw new Error('HTTP 503');
+      },
+    });
+    const ok = await engine.addSource({
+      kind: 'm3u',
+      name: 'Interrupted',
+      url: 'https://lists.test/ok',
+      autoRefreshMinutes: 0,
+    });
+    const broken = await engine.addSource({
+      kind: 'm3u',
+      name: 'Broken',
+      url: 'https://lists.test/broken',
+      autoRefreshMinutes: 0,
+    });
+    expect(await engine.refreshDue()).toEqual([ok.id]);
+    expect(engine.getSource(ok.id)?.status).toBe('ready');
+    // The failed one is recorded as an error and is not retried in a loop.
+    expect(engine.getSource(broken.id)?.status).toBe('error');
+    expect(engine.getSource(broken.id)?.lastError).toMatch(/^Channels: /);
+    expect(await engine.refreshDue()).toEqual([]);
+  });
+
+  it('reports the refresh step while it runs and keeps the warnings afterwards', async () => {
+    const { engine } = await createEngine({
+      [`${PANEL}/player_api.php`]: JSON.stringify(ACCOUNT),
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_live_categories`]:
+        LIVE_CATEGORIES,
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_live_streams`]:
+        LIVE_STREAMS,
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=`]: () => {
+        throw new Error('HTTP 500');
+      },
+      [`${PANEL}/xmltv.php`]: () => {
+        throw new Error('the stream could not be reached: the source exceeds the size limit');
+      },
+    });
+    const steps: (string | null)[] = [];
+    engine.subscribe((event) => {
+      if (event.type === 'refresh')
+        steps.push(engine.getSource(event.sourceId)?.refreshing ?? null);
+    });
+    const source = await engine.addSource({
+      kind: 'xtream',
+      name: 'Panel',
+      host: PANEL,
+      username: 'alice',
+      password: 's3cret',
+    });
+    expect(source.refreshing).toBeNull();
+    const result = await engine.refreshSource(source.id);
+    expect(steps).toEqual(['live', 'account', 'live', 'vod', 'epg', null]);
+    expect(result.channelCount).toBe(2);
+    const refreshed = engine.getSource(source.id)!;
+    expect(refreshed.refreshing).toBeNull();
+    expect(refreshed.status).toBe('ready');
+    expect(refreshed.lastWarnings).toEqual([
+      expect.stringMatching(/^VOD: /),
+      expect.stringMatching(/^EPG: .*size limit/),
+    ]);
+    expect(JSON.stringify(refreshed.lastWarnings)).not.toContain('s3cret');
   });
 });
 
