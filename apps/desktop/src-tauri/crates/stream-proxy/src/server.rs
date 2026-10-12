@@ -106,6 +106,15 @@ pub struct FetchTextOptions {
     pub policy: DestinationPolicy,
 }
 
+/// Result of [`ProxyHandle::fetch_to_file`]: the body is on disk, not in memory.
+#[derive(Clone, Debug)]
+pub struct FetchedFile {
+    pub bytes: u64,
+    pub status: u16,
+    pub content_type: Option<String>,
+    pub final_url: String,
+}
+
 impl ProxyServer {
     /// Binds `127.0.0.1:0` and starts serving in the current Tokio runtime.
     pub async fn start(options: ProxyOptions) -> Result<ProxyHandle> {
@@ -231,6 +240,79 @@ impl ProxyHandle {
             .lock()
             .map(|sessions| sessions.len())
             .unwrap_or(0)
+    }
+
+    /// Streams a resource to `path` with the same destination rules as
+    /// playback, so documents far larger than memory (a guide for thousands
+    /// of channels) can be processed incrementally afterwards.
+    pub async fn fetch_to_file(
+        &self,
+        raw_url: &str,
+        options: FetchTextOptions,
+        path: &std::path::Path,
+    ) -> Result<FetchedFile> {
+        use tokio::io::AsyncWriteExt;
+        let url = validate_destination(raw_url, options.policy).await?;
+        let session = Session {
+            id: String::new(),
+            policy: options.policy,
+            headers: sanitize_headers(&options.headers),
+            origins: Mutex::new(std::iter::once(url.origin().ascii_serialization()).collect()),
+            client: build_client()?,
+            cancel: CancellationToken::new(),
+        };
+        let work = async {
+            let (response, final_url) =
+                upstream_get(&session, &url, None, &self.state.options.user_agent).await?;
+            let status = response.status().as_u16();
+            if !(200..300).contains(&status) {
+                return Err(ProxyError::UpstreamStatus(status));
+            }
+            let content_type = header_string(response.headers(), header::CONTENT_TYPE);
+            let limit_error = || {
+                ProxyError::Upstream(format!(
+                    "the source exceeds the size limit of {} MB",
+                    options.max_bytes / (1024 * 1024)
+                ))
+            };
+            if let Some(length) = response.content_length() {
+                if length as usize > options.max_bytes {
+                    return Err(limit_error());
+                }
+            }
+            let mut file = tokio::fs::File::create(path)
+                .await
+                .map_err(|error| ProxyError::Io(error.to_string()))?;
+            let mut stream = response.bytes_stream();
+            let mut written: u64 = 0;
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|error| ProxyError::Upstream(error.to_string()))?;
+                written += chunk.len() as u64;
+                if written > options.max_bytes as u64 {
+                    return Err(limit_error());
+                }
+                file.write_all(&chunk)
+                    .await
+                    .map_err(|error| ProxyError::Io(error.to_string()))?;
+            }
+            file.flush()
+                .await
+                .map_err(|error| ProxyError::Io(error.to_string()))?;
+            Ok(FetchedFile {
+                bytes: written,
+                status,
+                content_type,
+                final_url: final_url.to_string(),
+            })
+        };
+        tokio::time::timeout(options.timeout, work)
+            .await
+            .map_err(|_| {
+                ProxyError::Upstream(format!(
+                    "no response within {} s",
+                    options.timeout.as_secs()
+                ))
+            })?
     }
 
     /// Downloads a text resource with the same destination rules as playback.

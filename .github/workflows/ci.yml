@@ -60,6 +60,14 @@ jobs:
         run: cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml -p orivue-stream-proxy --all-targets -- -D warnings
       - name: Tests del proxy
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml -p orivue-stream-proxy
+      - name: Dependencias del sistema para la app
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libgtk-3-dev
+      - name: Clippy y tests de la app (lector XMLTV)
+        run: |
+          cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml -p orivue-desktop --lib -- -D warnings
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml -p orivue-desktop --lib
 
   e2e:
     name: e2e (Linux)

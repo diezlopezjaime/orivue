@@ -15,7 +15,9 @@ mod server;
 mod session;
 
 pub use net::{is_private_ip, validate_destination, DestinationPolicy};
-pub use server::{FetchTextOptions, FetchedText, ProxyHandle, ProxyOptions, ProxyServer};
+pub use server::{
+    FetchTextOptions, FetchedFile, FetchedText, ProxyHandle, ProxyOptions, ProxyServer,
+};
 pub use session::{OpenSession, SessionHeaders, SessionInfo};
 
 #[derive(Debug, thiserror::Error)]

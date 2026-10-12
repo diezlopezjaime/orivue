@@ -7,8 +7,9 @@ mismo proyecto genera todas las plataformas.
 
 - `crates/stream-proxy`: proxy loopback con token que sirve MPEG-TS y HLS al
   reproductor web sin CORS, valida destinos y reescribe manifiestos.
-- Comandos `fetch_source`, `open_playback`, `close_playback`, `kv_*`,
-  `proxy_info` y `device_info` (`src/lib.rs`).
+- Comandos `fetch_source`, `fetch_epg`, `open_playback`, `close_playback`,
+  `kv_*`, `proxy_info` y `device_info` (`src/lib.rs`); `src/epg.rs` lee XMLTV
+  en streaming.
 - `crates/tauri-plugin-orivue-native`: plugin móvil. En Android/Fire TV aloja
   un `PlayerView` de Media3 detrás de la webview transparente, intercepta el
   botón atrás y reporta si el dispositivo es una televisión. En iOS solo

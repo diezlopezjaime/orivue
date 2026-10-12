@@ -8,10 +8,11 @@ resumen.
 
 El engine recibe un `EnginePlatform`:
 
-| Miembro                    | Navegador                      | Tauri                                              |
-| -------------------------- | ------------------------------ | -------------------------------------------------- |
-| `fetchText(url, opciones)` | `fetch` (CORS) o relay de Vite | comando `fetch_source` (Rust, límites y anti-SSRF) |
-| `kv.get/set/delete`        | `localStorage`                 | comandos `kv_*` (archivos JSON en datos de la app) |
+| Miembro                     | Navegador                         | Tauri                                                 |
+| --------------------------- | --------------------------------- | ----------------------------------------------------- |
+| `fetchText(url, opciones)`  | `fetch` (CORS) o relay de Vite    | comando `fetch_source` (Rust, límites y anti-SSRF)    |
+| `fetchGuide?(url, ventana)` | no disponible (parser en proceso) | comando `fetch_epg` (Rust, XMLTV en streaming, `.gz`) |
+| `kv.get/set/delete`         | `localStorage`                    | comandos `kv_*` (archivos JSON en datos de la app)    |
 
 ## Fuentes
 
@@ -67,7 +68,8 @@ allowLoopback }` y marca el canal como reciente. `kind` es `hls`, `mpegts`, `htt
 | --------------------------------- | ------------------------------------------------------------ |
 | `proxy_info`                      | Base URL y token del proxy loopback                          |
 | `device_info`                     | Plataforma, versión, móvil, depuración                       |
-| `fetch_source`                    | Descarga acotada de texto (listas, guías, JSON)              |
+| `fetch_source`                    | Descarga acotada de texto (listas, JSON)                     |
+| `fetch_epg`                       | Guía XMLTV a disco, leída en streaming; devuelve programas   |
 | `open_playback`                   | Abre sesión de proxy; devuelve URL loopback y `Content-Type` |
 | `close_playback`                  | Cierra la sesión y cancela descargas                         |
 | `kv_get` / `kv_set` / `kv_delete` | Almacén clave-valor durable                                  |

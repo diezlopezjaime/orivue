@@ -27,8 +27,10 @@ proyecto Tauri produce escritorio, Android, Fire TV e iOS.
 1. La UI pide al engine añadir una fuente (URL, cuenta Xtream o archivo).
 2. El engine construye la URL de lista y guía y la descarga a través de la
    plataforma: en Tauri el comando `fetch_source` (Rust) aplica límites de
-   tamaño, tiempo y redirecciones y bloquea destinos privados; en el navegador
-   se usa `fetch` (CORS) o el relay de desarrollo de Vite.
+   tamaño, tiempo y redirecciones y bloquea destinos privados; la guía XMLTV
+   va por `fetch_epg`, que la descarga a disco y la lee en streaming
+   devolviendo solo los programas del horizonte; en el navegador se usa
+   `fetch` (CORS) o el relay de desarrollo de Vite.
 3. El parser produce canales y avisos; la revisión se escribe de una vez en
    IndexedDB y solo sustituye a la anterior si es válida.
 4. Favoritos, recientes, ocultos, nombres y asociaciones EPG se guardan en un

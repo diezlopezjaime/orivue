@@ -21,6 +21,8 @@ tauri-build = { version = "2", features = [] }
 orivue-stream-proxy = { path = "crates/stream-proxy" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+flate2 = "1"
+quick-xml = "0.41"
 tauri = { version = "2", features = [] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 

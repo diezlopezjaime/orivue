@@ -27,6 +27,12 @@ Todos los cambios notables se documentarán aquí. El formato sigue
   agente de usuario se puede cambiar en Ajustes → Red.
 - Tiempos de espera ampliados: 20 s de conexión, 120 s sin datos y 5 minutos
   por lista o guía (antes 30 s y 1 minuto), con mensajes que indican el valor.
+- La guía XMLTV se descarga a disco y se lee en streaming desde Rust
+  (`fetch_epg`, con soporte `.gz`), sin límite práctico de tamaño: solo los
+  programas del horizonte llegan al motor. Antes una guía de miles de canales
+  superaba el límite de 120 MB y se descartaba.
+- Añadir una lista termina en cuanto hay canales; el catálogo y la guía siguen
+  cargando en segundo plano con su progreso en la tarjeta.
 
 ## 0.2.0
 

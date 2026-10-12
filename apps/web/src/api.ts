@@ -11,9 +11,36 @@ import type {
   VodKind,
   VodQuery,
 } from '@orivue/engine';
+import { safeError } from '@orivue/engine';
 import type { XtreamOutput } from '@orivue/xtream';
 import { getEngine } from './engine';
 import type { Channel, Group, Playlist, Program, TimelineChannel } from './types';
+
+/**
+ * Runs the first import of a source and resolves as soon as its channels are
+ * stored. The catalogue and the guide keep loading in the background and the
+ * list card reports their progress, so a large guide never blocks the form.
+ */
+function importUntilChannels(id: string): Promise<void> {
+  const engine = getEngine();
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error?: unknown) => {
+      if (settled) return;
+      settled = true;
+      unsubscribe();
+      if (error === undefined) resolve();
+      else reject(error instanceof Error ? error : new Error(safeError(error)));
+    };
+    const unsubscribe = engine.subscribe((event) => {
+      if (event.type === 'channels' && event.sourceId === id) finish();
+    });
+    engine.refreshSource(id).then(
+      () => finish(),
+      (error: unknown) => finish(error),
+    );
+  });
+}
 
 function toProgram(program: EngineProgram, channelId: string): Program {
   return {
@@ -82,14 +109,14 @@ export const api = {
       url: input.url,
       epgUrl: input.epgUrl,
     });
-    await engine.refreshSource(source.id);
+    await importUntilChannels(source.id);
     return engine.getSource(source.id) ?? source;
   },
 
   async createXtream(input: CreateXtreamInput): Promise<Playlist> {
     const engine = getEngine();
     const source = await engine.addSource({ kind: 'xtream', ...input } satisfies AddSourceInput);
-    await engine.refreshSource(source.id);
+    await importUntilChannels(source.id);
     return engine.getSource(source.id) ?? source;
   },
 
@@ -100,7 +127,7 @@ export const api = {
     const engine = getEngine();
     const content = await file.text();
     const source = await engine.addSource({ kind: 'file', name: name || file.name, content });
-    await engine.refreshSource(source.id);
+    await importUntilChannels(source.id);
     return engine.getSource(source.id) ?? source;
   },
 
