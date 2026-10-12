@@ -67,11 +67,13 @@ const ACCOUNT = {
 
 function fakePlatform(responses: Record<string, string | (() => string)>) {
   const requests: string[] = [];
+  const headersSeen: Record<string, string | undefined>[] = [];
   const platform: EnginePlatform = {
     name: 'browser',
     kv: memoryKeyValueStore(),
-    fetchText: (url) => {
+    fetchText: (url, options) => {
       requests.push(url);
+      headersSeen.push({ ...(options?.headers ?? {}) });
       const match = Object.entries(responses)
         .sort((a, b) => b[0].length - a[0].length)
         .find(([prefix]) => url.startsWith(prefix));
@@ -80,7 +82,7 @@ function fakePlatform(responses: Record<string, string | (() => string)>) {
       return Promise.resolve(typeof body === 'function' ? body() : body);
     },
   };
-  return { platform, requests };
+  return { platform, requests, headersSeen };
 }
 
 let counter = 0;
@@ -88,7 +90,7 @@ async function createEngine(
   responses: Record<string, string | (() => string)>,
   randomId?: () => string,
 ) {
-  const { platform, requests } = fakePlatform(responses);
+  const { platform, requests, headersSeen } = fakePlatform(responses);
   counter += 1;
   const engine = new OrivueEngine({
     platform,
@@ -97,7 +99,7 @@ async function createEngine(
     randomId: randomId ?? (() => `id${counter}-${Math.random().toString(36).slice(2, 8)}`),
   });
   await engine.init();
-  return { engine, platform, requests };
+  return { engine, platform, requests, headersSeen };
 }
 
 describe('OrivueEngine sources', () => {
@@ -237,6 +239,37 @@ describe('OrivueEngine sources', () => {
     const ids = (items: { id: string }[]) => new Set(items.map((item) => item.id));
     // Both channels carry an epg id, which is the identity the id derives from.
     expect(ids(api.engine.listChannels().items)).toEqual(ids(playlist.engine.listChannels().items));
+  });
+
+  it('sends the configured user agent to panels, lists and streams', async () => {
+    const { engine, headersSeen } = await createEngine({
+      [`${PANEL}/player_api.php`]: JSON.stringify(ACCOUNT),
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_live_categories`]:
+        LIVE_CATEGORIES,
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_live_streams`]:
+        LIVE_STREAMS,
+      'https://lists.test/': PLAYLIST,
+    });
+    const plain = await engine.addSource({ kind: 'm3u', name: 'L', url: 'https://lists.test/a' });
+    await engine.refreshSource(plain.id);
+    expect(headersSeen.at(-1)).toEqual({});
+    await engine.updateSettings({ userAgent: 'MyPlayer/9' });
+    const panel = await engine.addSource({
+      kind: 'xtream',
+      name: 'P',
+      host: PANEL,
+      username: 'alice',
+      password: 's3cret',
+    });
+    await engine.refreshSource(panel.id);
+    const panelRequests = headersSeen.slice(-7);
+    expect(panelRequests.every((headers) => headers['User-Agent'] === 'MyPlayer/9')).toBe(true);
+    const channels = engine.listChannels().items;
+    const live = await engine.getPlayable(channels.find((c) => c.name === 'Noticias 24')!.id);
+    expect(live.headers['User-Agent']).toBe('MyPlayer/9');
+    // A per-channel agent from the list wins over the global setting.
+    const custom = await engine.getPlayable(channels.find((c) => c.name === 'Cine Clásico')!.id);
+    expect(custom.headers).toEqual({ 'User-Agent': 'Orivue Test' });
   });
 
   it('explains the playlist size limit instead of leaking the transport error', async () => {

@@ -167,7 +167,11 @@ validado con una instalación real.
   (canal, redirecciones y segmentos de su manifiesto), con token por ejecución.
 - Destinos loopback y de red privada se bloquean salvo Ace Stream o la opción
   “permitir red local” de Ajustes.
-- Listas y guías se descargan con límites de tamaño y tiempo desde Rust.
+- Listas y guías se descargan con límites de tamaño y tiempo desde Rust
+  (conexión 20 s, 120 s sin datos, 5 min por lista o guía).
+- Las peticiones se presentan como VLC (`VLC/3.0.21 LibVLC/3.0.21`) porque
+  muchos paneles descartan en silencio clientes que no reconocen; el agente se
+  puede cambiar en Ajustes → Red y una lista puede fijarlo con `|User-Agent=`.
 - Las credenciales Xtream se guardan en el almacén local de la app sin cifrado
   adicional; protege tu cuenta de usuario y no compartas el directorio de datos.
 - Android permite tráfico HTTP en claro porque las fuentes IPTV suelen serlo.

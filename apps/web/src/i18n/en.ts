@@ -174,6 +174,9 @@ export const en: Messages = {
     privateNetwork: 'Allow sources on the local network (192.168.x, 10.x, localhost)',
     privateHint: 'Off by default so a malicious list cannot target services on your own network.',
     epgHorizon: 'Guide horizon (hours)',
+    userAgent: 'User agent (User-Agent)',
+    userAgentHint:
+      'Empty uses the default, which identifies as VLC because many panels drop clients they do not recognise. Change it only if your provider requires a specific one.',
     diagnostics: 'Diagnostics',
     platform: 'Platform',
     version: 'Version',

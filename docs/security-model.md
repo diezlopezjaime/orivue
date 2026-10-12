@@ -29,7 +29,10 @@ Orivue no pretende resistir malware con los mismos permisos del usuario.
 - revalidación de cada redirect y límites estrictos;
 - proxy derivado de un canal importado, nunca `?url=<arbitraria>`;
 - allowlist mínima de cabeceras; se eliminan `Cookie`, `Authorization` y
-  cabeceras hop-by-hop salvo configuración segura ligada a la fuente.
+  cabeceras hop-by-hop salvo configuración segura ligada a la fuente;
+- `User-Agent` por defecto `VLC/3.0.21 LibVLC/3.0.21`: identificarse como
+  Orivue hacía que algunos paneles descartaran las peticiones sin responder.
+  El usuario puede fijar otro en Ajustes y una lista puede indicarlo por canal.
 
 Una comprobación DNS previa no elimina por sí sola el rebinding: el cliente de
 red debe conectar al resultado validado o verificar la dirección efectiva.

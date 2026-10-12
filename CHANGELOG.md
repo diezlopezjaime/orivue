@@ -22,6 +22,11 @@ Todos los cambios notables se documentarán aquí. El formato sigue
   indican el valor del límite.
 - Una lista cuya primera importación no llegó a terminar (por ejemplo al cerrar
   la app a medias) se reintenta sola al arrancar aunque esté en "Manual".
+- Las peticiones se presentan como VLC en lugar de "Orivue/0.2": algunos
+  paneles descartaban sin responder ("timeout") al cliente desconocido. El
+  agente de usuario se puede cambiar en Ajustes → Red.
+- Tiempos de espera ampliados: 20 s de conexión, 120 s sin datos y 5 minutos
+  por lista o guía (antes 30 s y 1 minuto), con mensajes que indican el valor.
 
 ## 0.2.0
 

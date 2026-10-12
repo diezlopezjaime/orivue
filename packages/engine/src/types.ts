@@ -178,6 +178,12 @@ export interface EngineSettings {
   epgHorizonHours: number;
   maxPlaylistBytes: number;
   maxEpgBytes: number;
+  /**
+   * `User-Agent` sent to lists, panels, guides and streams. Empty means the
+   * platform default, which identifies as VLC because many panels drop
+   * requests from clients they do not recognise.
+   */
+  userAgent: string;
 }
 
 export type VodKind = 'movie' | 'series';

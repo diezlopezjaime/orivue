@@ -70,6 +70,7 @@ export const DEFAULT_SETTINGS: EngineSettings = {
   epgHorizonHours: 72,
   maxPlaylistBytes: 120 * 1024 * 1024,
   maxEpgBytes: 120 * 1024 * 1024,
+  userAgent: '',
 };
 
 function emptyLibrary(): LibraryState {
@@ -321,8 +322,9 @@ export class OrivueEngine {
     return fetchAccountInfo(credentials, async (url, signal) => {
       const text = await this.platform.fetchText(url, {
         maxBytes: 512 * 1024,
-        timeoutMs: 15_000,
+        timeoutMs: 30_000,
         signal,
+        ...this.requestHeaders(),
         allowPrivateNetwork: this.settings.allowPrivateNetwork,
       });
       return JSON.parse(text) as unknown;
@@ -482,7 +484,8 @@ export class OrivueEngine {
     try {
       return await this.platform.fetchText(url, {
         maxBytes,
-        timeoutMs: 60_000,
+        timeoutMs: 300_000,
+        ...this.requestHeaders(),
         allowPrivateNetwork: this.settings.allowPrivateNetwork,
       });
     } catch (error) {
@@ -562,7 +565,8 @@ export class OrivueEngine {
     try {
       const content = await this.platform.fetchText(epgUrl, {
         maxBytes: this.settings.maxEpgBytes,
-        timeoutMs: 120_000,
+        timeoutMs: 300_000,
+        ...this.requestHeaders(),
         allowPrivateNetwork: this.settings.allowPrivateNetwork,
       });
       const parsed = parseXmltv(content);
@@ -896,9 +900,23 @@ export class OrivueEngine {
       live: kind !== 'http',
       url: stored.url,
       kind,
-      headers: stored.headers,
+      headers: this.withUserAgent(stored.headers),
       allowLoopback: this.settings.allowPrivateNetwork,
     };
+  }
+
+  /** Extra `fetchText` options carrying the configured user agent, if any. */
+  private requestHeaders(): { headers?: Record<string, string> } {
+    const agent = this.settings.userAgent.trim();
+    return agent ? { headers: { 'User-Agent': agent } } : {};
+  }
+
+  /** Adds the configured user agent to stream headers that do not set one. */
+  private withUserAgent(headers: Readonly<Record<string, string>>): Record<string, string> {
+    const agent = this.settings.userAgent.trim();
+    if (!agent || Object.keys(headers).some((name) => name.toLowerCase() === 'user-agent'))
+      return { ...headers };
+    return { ...headers, 'User-Agent': agent };
   }
 
   // --------------------------------------------------------------------- VOD
@@ -907,6 +925,7 @@ export class OrivueEngine {
     const text = await this.platform.fetchText(url, {
       maxBytes,
       timeoutMs: 120_000,
+      ...this.requestHeaders(),
       allowPrivateNetwork: this.settings.allowPrivateNetwork,
     });
     return JSON.parse(text) as unknown;
@@ -1041,7 +1060,7 @@ export class OrivueEngine {
         live: false,
         url: buildMovieUrl(credentials, item.remoteId, item.containerExtension ?? 'mp4'),
         kind: 'http',
-        headers: {},
+        headers: this.withUserAgent({}),
         allowLoopback: this.settings.allowPrivateNetwork,
       };
     }
@@ -1056,7 +1075,7 @@ export class OrivueEngine {
       live: false,
       url: buildEpisodeUrl(credentials, episode.id, episode.containerExtension),
       kind: 'http',
-      headers: {},
+      headers: this.withUserAgent({}),
       allowLoopback: this.settings.allowPrivateNetwork,
     };
   }

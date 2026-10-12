@@ -108,6 +108,20 @@ export function SettingsPage() {
               }
             />
           </label>
+          <label>
+            {t('settings.userAgent')}
+            <input
+              data-tv-focus
+              type="text"
+              placeholder="VLC/3.0.21 LibVLC/3.0.21"
+              defaultValue={settings.data?.userAgent ?? ''}
+              onBlur={(event) => {
+                const userAgent = event.target.value.trim();
+                if (userAgent !== (settings.data?.userAgent ?? '')) update.mutate({ userAgent });
+              }}
+            />
+          </label>
+          <p>{t('settings.userAgentHint')}</p>
         </article>
         <article className="settings-card">
           <h2>{t('settings.diagnostics')}</h2>
