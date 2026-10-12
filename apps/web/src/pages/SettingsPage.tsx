@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EngineSettings } from '@orivue/engine';
+import { useState } from 'react';
 import { api } from '../api';
+import { ConfigExportDialog, ConfigImportDialog } from '../components/ConfigTransfer';
 import { useDeviceInfo } from '../hooks/useDevice';
 import { LANGUAGES, setLanguagePreference, useT, type LanguagePreference } from '../i18n';
 import { useAppStore, type PlayerPreference, type TvModePreference } from '../store';
@@ -16,6 +18,8 @@ export function SettingsPage() {
   });
   const { tvMode, setTvMode, playerPreference, setPlayerPreference, language, setLanguage } =
     useAppStore();
+  const [includeCredentials, setIncludeCredentials] = useState(false);
+  const [transfer, setTransfer] = useState<'export' | 'import'>();
   return (
     <section className="page settings-page">
       <header className="page-header">
@@ -124,6 +128,27 @@ export function SettingsPage() {
           <p>{t('settings.userAgentHint')}</p>
         </article>
         <article className="settings-card">
+          <h2>{t('settings.backup')}</h2>
+          <p>{t('settings.backupHint')}</p>
+          <label className="checkbox">
+            <input
+              data-tv-focus
+              type="checkbox"
+              checked={includeCredentials}
+              onChange={(event) => setIncludeCredentials(event.target.checked)}
+            />
+            {t('settings.includeCredentials')}
+          </label>
+          <div className="settings-actions">
+            <button data-tv-focus type="button" onClick={() => setTransfer('export')}>
+              {t('settings.exportConfig')}
+            </button>
+            <button data-tv-focus type="button" onClick={() => setTransfer('import')}>
+              {t('settings.importConfig')}
+            </button>
+          </div>
+        </article>
+        <article className="settings-card">
           <h2>{t('settings.diagnostics')}</h2>
           <dl>
             <dt>{t('settings.platform')}</dt>
@@ -148,6 +173,20 @@ export function SettingsPage() {
           </dl>
         </article>
       </div>
+      {transfer === 'export' && (
+        <ConfigExportDialog
+          includeCredentials={includeCredentials}
+          onClose={() => setTransfer(undefined)}
+        />
+      )}
+      {transfer === 'import' && (
+        <ConfigImportDialog
+          onClose={() => {
+            setTransfer(undefined);
+            void queryClient.invalidateQueries();
+          }}
+        />
+      )}
     </section>
   );
 }

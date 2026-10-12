@@ -34,6 +34,19 @@ Todos los cambios notables se documentarán aquí. El formato sigue
 - Añadir una lista termina en cuanto hay canales; el catálogo y la guía siguen
   cargando en segundo plano con su progreso en la tarjeta.
 
+### Añadido
+
+- Categorías a importar por lista (Mis listas → Categorías): buscador,
+  selección múltiple y "marcar/desmarcar visibles". Las categorías no elegidas
+  no se descargan ni se guardan y la guía solo conserva los programas de los
+  canales importados. Las categorías nuevas del proveedor se avisan en la
+  tarjeta en lugar de importarse en silencio.
+- Copia y traslado (Ajustes): exportar e importar la configuración (listas,
+  categorías elegidas, favoritos, nombres, ocultos, asociaciones de guía y
+  ajustes) como texto o archivo `.json`, con las contraseñas Xtream solo si se
+  marca la casilla. Las listas conservan su id, así que favoritos y nombres
+  personalizados se mantienen en el otro dispositivo.
+
 ## 0.2.0
 
 ### Añadido

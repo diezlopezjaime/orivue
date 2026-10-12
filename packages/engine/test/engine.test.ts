@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   detectStreamKind,
   memoryKeyValueStore,
@@ -472,6 +472,140 @@ describe('OrivueEngine sources', () => {
       expect.stringMatching(/^EPG: .*size limit/),
     ]);
     expect(JSON.stringify(refreshed.lastWarnings)).not.toContain('s3cret');
+  });
+});
+
+describe('category selection and configuration transfer', () => {
+  const BIG = `#EXTM3U url-tvg="https://guide.test/epg.xml"
+#EXTINF:-1 tvg-id="news.es" group-title="ES| NOTICIAS",Noticias 24
+https://cdn.test/1.ts
+#EXTINF:-1 tvg-id="sport.es" group-title="ES| DEPORTES",Deporte Total
+https://cdn.test/2.ts
+#EXTINF:-1 tvg-id="movies.es" group-title="ES| CINE",Cine Clásico
+https://cdn.test/3.ts
+#EXTINF:-1 tvg-id="sport.uk" group-title="UK| SPORTS",Sports UK
+https://cdn.test/4.ts
+#EXTINF:-1 group-title="FR| INFO",Info FR
+https://cdn.test/5.ts
+`;
+  const BIG_WITH_NEW = `${BIG}#EXTINF:-1 group-title="IT| SPORT",Sport IT
+https://cdn.test/6.ts
+`;
+
+  it('imports only the selected categories and prunes the guide to them', async () => {
+    const responses: Record<string, string> = {
+      'https://lists.test/big': BIG,
+      'https://guide.test/epg.xml': EPG,
+    };
+    const { engine, requests } = await createEngine(responses);
+    const source = await engine.addSource({
+      kind: 'm3u',
+      name: 'Big',
+      url: 'https://lists.test/big',
+    });
+    const first = await engine.refreshSource(source.id);
+    expect(first.channelCount).toBe(5);
+    expect(first.programCount).toBe(4); // news.es and movies.es, two each
+    expect(engine.getSource(source.id)?.availableGroups).toEqual([
+      { name: 'ES| NOTICIAS', channelCount: 1 },
+      { name: 'ES| DEPORTES', channelCount: 1 },
+      { name: 'ES| CINE', channelCount: 1 },
+      { name: 'UK| SPORTS', channelCount: 1 },
+      { name: 'FR| INFO', channelCount: 1 },
+    ]);
+
+    const selected = await engine.setIncludedGroups(source.id, [
+      'ES| NOTICIAS',
+      'ES| DEPORTES',
+      'UK| SPORTS',
+    ]);
+    expect(selected.channelCount).toBe(3);
+    expect(engine.listChannels().items.map((c) => c.name)).toEqual([
+      'Noticias 24',
+      'Deporte Total',
+      'Sports UK',
+    ]);
+    // The guide keeps news.es (selected) and drops movies.es (deselected).
+    expect(selected.programCount).toBe(2);
+    expect(engine.getSource(source.id)?.includedGroups).toEqual([
+      'ES| NOTICIAS',
+      'ES| DEPORTES',
+      'UK| SPORTS',
+    ]);
+
+    // A category that appears later is reported, not silently imported.
+    responses['https://lists.test/big'] = BIG_WITH_NEW;
+    const again = await engine.refreshSource(source.id);
+    expect(again.channelCount).toBe(3);
+    expect(again.warnings).toContain('1 new category not selected: IT| SPORT');
+    expect(engine.getSource(source.id)?.availableGroups).toHaveLength(6);
+
+    // Back to everything.
+    const all = await engine.setIncludedGroups(source.id, null);
+    expect(all.channelCount).toBe(6);
+    expect(requests.filter((url) => url === 'https://lists.test/big')).toHaveLength(4);
+  });
+
+  it('exports and imports the configuration keeping ids, favourites and selections', async () => {
+    const responses = {
+      'https://lists.test/big': BIG,
+      [`${PANEL}/player_api.php`]: JSON.stringify(ACCOUNT),
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_live_categories`]:
+        LIVE_CATEGORIES,
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_live_streams`]:
+        LIVE_STREAMS,
+    };
+    const origin = await createEngine(responses);
+    const list = await origin.engine.addSource({
+      kind: 'm3u',
+      name: 'Big',
+      url: 'https://lists.test/big',
+    });
+    const panel = await origin.engine.addSource({
+      kind: 'xtream',
+      name: 'Panel',
+      host: PANEL,
+      username: 'alice',
+      password: 's3cret',
+    });
+    await origin.engine.refreshSource(list.id);
+    await origin.engine.refreshSource(panel.id);
+    await origin.engine.setIncludedGroups(list.id, ['ES| DEPORTES', 'UK| SPORTS']);
+    const sport = origin.engine.listChannels().items.find((c) => c.name === 'Deporte Total')!;
+    await origin.engine.setFavorite(sport.id, true);
+    await origin.engine.renameChannel(sport.id, 'Deportes');
+    await origin.engine.updateSettings({ userAgent: 'MyPlayer/9', epgHorizonHours: 24 });
+
+    const withoutSecrets = origin.engine.exportConfig();
+    expect(JSON.stringify(withoutSecrets)).not.toContain('s3cret');
+    const full = origin.engine.exportConfig({ includeCredentials: true });
+    expect(full.sources.map((s) => s.id)).toEqual([panel.id, list.id]);
+    expect(full.sources.find((s) => s.id === panel.id)?.xtream?.password).toBe('s3cret');
+
+    const target = await createEngine(responses);
+    const partial = await target.engine.importConfig(JSON.parse(JSON.stringify(withoutSecrets)));
+    expect(partial.added).toEqual([list.id]);
+    expect(partial.warnings).toEqual(['Panel: Xtream password missing, not imported']);
+    const result = await target.engine.importConfig(JSON.parse(JSON.stringify(full)));
+    expect(result.added).toEqual([panel.id]);
+    expect(result.updated).toEqual([list.id]);
+    expect(target.engine.getSource(panel.id)?.epgUrl).toBe(
+      `${PANEL}/xmltv.php?username=%5Bredacted%5D&password=%5Bredacted%5D`,
+    );
+    await vi.waitFor(() => {
+      expect(target.engine.getSource(list.id)?.status).toBe('ready');
+      expect(target.engine.getSource(panel.id)?.status).toBe('ready');
+    });
+    expect(target.engine.getSource(list.id)?.includedGroups).toEqual([
+      'ES| DEPORTES',
+      'UK| SPORTS',
+    ]);
+    const moved = target.engine.listChannels().items.find((c) => c.id === sport.id)!;
+    expect(moved.name).toBe('Deportes');
+    expect(moved.favorite).toBe(true);
+    expect(target.engine.getSettings().userAgent).toBe('MyPlayer/9');
+    expect(target.engine.getSettings().epgHorizonHours).toBe(24);
+    await expect(target.engine.importConfig({ hello: 'world' })).rejects.toThrow(/not an Orivue/);
   });
 });
 

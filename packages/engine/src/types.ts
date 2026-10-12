@@ -32,8 +32,48 @@ export interface Source {
   readonly account: XtreamAccountInfo | null;
   /** Non-fatal notes from the last refresh, kept for diagnosis. */
   readonly lastWarnings: string[];
+  /**
+   * Categories to import, by name. `null` imports everything; otherwise
+   * channels of other categories are not stored and the guide is pruned to
+   * the channels that remain.
+   */
+  readonly includedGroups: string[] | null;
+  /** Every category the source offered in its last refresh, before filtering. */
+  readonly availableGroups: AvailableGroup[];
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+export interface AvailableGroup {
+  readonly name: string;
+  readonly channelCount: number;
+}
+
+/** Portable snapshot of the configuration for another device. */
+export interface ConfigExport {
+  readonly format: 'orivue-config';
+  readonly version: 1;
+  readonly exportedAt: string;
+  readonly sources: ConfigSource[];
+  readonly library: LibraryState;
+  readonly settings: Partial<EngineSettings>;
+}
+
+export interface ConfigSource {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: SourceKind;
+  readonly url: string | null;
+  readonly xtream: (Omit<XtreamSourceConfig, 'password'> & { password?: string }) | null;
+  readonly epgUrl: string | null;
+  readonly autoRefreshMinutes: number;
+  readonly includedGroups: string[] | null;
+}
+
+export interface ConfigImportResult {
+  readonly added: string[];
+  readonly updated: string[];
+  readonly warnings: string[];
 }
 
 /** Stage of a refresh in progress, so the interface can say what it is waiting for. */

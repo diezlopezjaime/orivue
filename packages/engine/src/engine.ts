@@ -34,7 +34,10 @@ import { openEngineStorage, type EngineStorage } from './storage.js';
 import { detectStreamKind } from './stream-kind.js';
 import type {
   AddSourceInput,
+  AvailableGroup,
   Channel,
+  ConfigExport,
+  ConfigImportResult,
   ChannelPage,
   ChannelQuery,
   EngineEvent,
@@ -57,6 +60,7 @@ import type {
   VodItem,
   VodKind,
   VodQuery,
+  XtreamSourceConfig,
 } from './types.js';
 
 const SOURCES_KEY = 'sources';
@@ -130,7 +134,12 @@ export class OrivueEngine {
     ]);
     // Sources saved by older versions lack the fields added since.
     this.sources = Array.isArray(sources)
-      ? sources.map((source) => ({ ...source, lastWarnings: source.lastWarnings ?? [] }))
+      ? sources.map((source) => ({
+          ...source,
+          lastWarnings: source.lastWarnings ?? [],
+          includedGroups: source.includedGroups ?? null,
+          availableGroups: source.availableGroups ?? [],
+        }))
       : [];
     this.library = { ...emptyLibrary(), ...(library ?? {}) };
     this.settings = { ...DEFAULT_SETTINGS, ...(settings ?? {}) };
@@ -228,6 +237,8 @@ export class OrivueEngine {
       seriesCount: 0,
       account: null,
       lastWarnings: [],
+      includedGroups: null,
+      availableGroups: [],
       createdAt: now,
       updatedAt: now,
     };
@@ -378,13 +389,15 @@ export class OrivueEngine {
         }
       }
       // With a catalogue the on-demand entries of the M3U are redundant in the live list.
-      const liveEntries = catalogue
+      const allLive = catalogue
         ? entries.filter((channel) => !isVodStreamUrl(channel.url))
         : entries;
-      if (liveEntries.length === 0 && !catalogue)
+      if (allLive.length === 0 && !catalogue)
         throw new Error('The playlist did not contain any playable channels');
+      const availableGroups = countGroups(allLive);
+      const liveEntries = this.applyGroupSelection(source, allLive, availableGroups, warnings);
       const channels: StoredChannel[] = liveEntries.map((channel, order) => {
-        const groupName = channel.groupName?.trim() || 'Sin categoría';
+        const groupName = groupNameOf(channel);
         return {
           id: channel.id,
           sourceId: id,
@@ -420,6 +433,7 @@ export class OrivueEngine {
         account,
         epgUrl,
         lastWarnings: warnings,
+        availableGroups,
         updatedAt: now,
       });
       await this.persistSources();
@@ -564,6 +578,7 @@ export class OrivueEngine {
   ): Promise<{ names: Record<string, string>; programs: Program[]; warnings: string[] }> {
     const names: Record<string, string> = {};
     const programs: Program[] = [];
+    let allowed: Set<string> | undefined;
     const push = (
       channelId: string,
       start: number,
@@ -573,6 +588,10 @@ export class OrivueEngine {
       category: string | null,
     ) => {
       if (stop < oldest || start > horizon) return;
+      // Only programmes some channel of this source can resolve are kept:
+      // a guide for thousands of channels is mostly dead weight otherwise.
+      allowed ??= this.guideKeysFor(id, names);
+      if (!allowed.has(channelId.toLowerCase())) return;
       const startAt = new Date(start).toISOString();
       programs.push({
         id: `${id}:${stableId('programme', channelId, startAt, title)}`,
@@ -623,6 +642,221 @@ export class OrivueEngine {
       programs,
       warnings: parsed.warnings.slice(0, 10).map((warning) => warning.message),
     };
+  }
+
+  /** EPG keys the stored channels of a source resolve to, given the guide's names. */
+  private guideKeysFor(sourceId: string, names: Record<string, string>): Set<string> {
+    const keys = new Set<string>();
+    const byName = new Map<string, string>();
+    for (const [key, name] of Object.entries(names)) {
+      const lower = name.toLowerCase();
+      if (!byName.has(lower)) byName.set(lower, key);
+    }
+    for (const stored of this.channelsBySource.get(sourceId) ?? []) {
+      const manual = this.library.epgMappings[stored.id];
+      if (manual) keys.add(manual);
+      if (stored.tvgId) keys.add(stored.tvgId.toLowerCase());
+      const matched = byName.get(this.displayName(stored).toLowerCase());
+      if (matched) keys.add(matched);
+    }
+    return keys;
+  }
+
+  private applyGroupSelection(
+    source: Source,
+    entries: ParsedChannel[],
+    available: AvailableGroup[],
+    warnings: string[],
+  ): ParsedChannel[] {
+    if (!source.includedGroups) return entries;
+    const included = new Set(source.includedGroups);
+    const known = new Set(source.availableGroups.map((group) => group.name));
+    const fresh = available
+      .map((group) => group.name)
+      .filter((name) => !included.has(name) && !known.has(name));
+    if (fresh.length && known.size) {
+      const shown = fresh.slice(0, 5).join(', ');
+      warnings.push(
+        `${fresh.length} new categor${fresh.length === 1 ? 'y' : 'ies'} not selected: ${shown}${fresh.length > 5 ? '…' : ''}`,
+      );
+    }
+    return entries.filter((channel) => included.has(groupNameOf(channel)));
+  }
+
+  /** Chooses the categories a source imports (`null` for all) and refreshes it. */
+  async setIncludedGroups(id: string, groups: string[] | null): Promise<RefreshResult> {
+    const source = this.requireSource(id);
+    const includedGroups = groups
+      ? [...new Set(groups.map((name) => name.trim()).filter(Boolean))]
+      : null;
+    this.replaceSource({
+      ...source,
+      includedGroups,
+      updatedAt: new Date(this.now()).toISOString(),
+    });
+    await this.persistSources();
+    this.emit({ type: 'sources' });
+    return this.refreshSource(id);
+  }
+
+  /** Snapshot of sources, library and settings for another device. */
+  exportConfig(options: { includeCredentials?: boolean } = {}): ConfigExport {
+    return {
+      format: 'orivue-config',
+      version: 1,
+      exportedAt: new Date(this.now()).toISOString(),
+      sources: this.sources
+        .filter((source) => source.kind !== 'file')
+        .map((source) => ({
+          id: source.id,
+          name: source.name,
+          kind: source.kind,
+          url: source.url,
+          xtream: source.xtream
+            ? {
+                baseUrl: source.xtream.baseUrl,
+                username: source.xtream.username,
+                output: source.xtream.output,
+                ...(options.includeCredentials ? { password: source.xtream.password } : {}),
+              }
+            : null,
+          // The default Xtream guide URL embeds the password; it is rebuilt on import.
+          epgUrl:
+            source.xtream && source.epgUrl === buildEpgUrl(source.xtream) ? null : source.epgUrl,
+          autoRefreshMinutes: source.autoRefreshMinutes,
+          includedGroups: source.includedGroups,
+        })),
+      library: structuredClone(this.library),
+      settings: {
+        epgHorizonHours: this.settings.epgHorizonHours,
+        userAgent: this.settings.userAgent,
+        allowPrivateNetwork: this.settings.allowPrivateNetwork,
+      },
+    };
+  }
+
+  /**
+   * Applies a snapshot from {@link exportConfig}. Sources keep their ids so
+   * favourites and custom names, which are keyed by channel id, carry over.
+   * Existing sources are updated; new ones are imported in the background.
+   */
+  async importConfig(input: unknown): Promise<ConfigImportResult> {
+    const data = input as Partial<ConfigExport> | null;
+    if (!data || data.format !== 'orivue-config' || !Array.isArray(data.sources))
+      throw new Error('This is not an Orivue configuration file');
+    const result = { added: [] as string[], updated: [] as string[], warnings: [] as string[] };
+    const now = new Date(this.now()).toISOString();
+    for (const entry of data.sources) {
+      if (!entry || typeof entry.id !== 'string' || typeof entry.name !== 'string') continue;
+      const existing = this.sources.find((source) => source.id === entry.id);
+      let xtream: XtreamSourceConfig | null = null;
+      if (entry.kind === 'xtream') {
+        const password = entry.xtream?.password ?? existing?.xtream?.password;
+        if (!entry.xtream?.baseUrl || !entry.xtream.username || !password) {
+          result.warnings.push(`${entry.name}: Xtream password missing, not imported`);
+          continue;
+        }
+        xtream = {
+          baseUrl: entry.xtream.baseUrl,
+          username: entry.xtream.username,
+          password,
+          output: entry.xtream.output === 'm3u8' ? 'm3u8' : 'ts',
+        };
+      } else if (entry.kind === 'm3u') {
+        if (!entry.url) {
+          result.warnings.push(`${entry.name}: playlist URL missing, not imported`);
+          continue;
+        }
+        try {
+          assertHttpUrl(entry.url);
+        } catch (error) {
+          result.warnings.push(`${entry.name}: ${safeError(error)}`);
+          continue;
+        }
+      } else {
+        result.warnings.push(`${entry.name}: local files are not exported`);
+        continue;
+      }
+      const includedGroups = Array.isArray(entry.includedGroups)
+        ? entry.includedGroups.filter((name): name is string => typeof name === 'string')
+        : null;
+      const shared = {
+        name: entry.name.trim() || 'Lista',
+        url: entry.kind === 'm3u' ? (entry.url ?? null) : null,
+        xtream,
+        epgUrl:
+          typeof entry.epgUrl === 'string' && entry.epgUrl
+            ? entry.epgUrl
+            : xtream
+              ? buildEpgUrl(xtream)
+              : null,
+        autoRefreshMinutes:
+          typeof entry.autoRefreshMinutes === 'number' && entry.autoRefreshMinutes >= 0
+            ? entry.autoRefreshMinutes
+            : 720,
+        includedGroups,
+        updatedAt: now,
+      };
+      if (existing) {
+        this.replaceSource({ ...existing, ...shared });
+        result.updated.push(existing.id);
+      } else {
+        this.sources = [
+          ...this.sources,
+          {
+            id: entry.id,
+            kind: entry.kind,
+            status: 'pending',
+            lastUpdatedAt: null,
+            lastError: null,
+            epgStatus: 'pending',
+            epgUpdatedAt: null,
+            epgError: null,
+            channelCount: 0,
+            programCount: 0,
+            movieCount: 0,
+            seriesCount: 0,
+            account: null,
+            lastWarnings: [],
+            availableGroups: [],
+            createdAt: now,
+            ...shared,
+          },
+        ];
+        this.channelsBySource.set(entry.id, []);
+        this.epgNames.set(entry.id, {});
+        result.added.push(entry.id);
+      }
+    }
+    await this.persistSources();
+    const library = data.library;
+    if (library && typeof library === 'object') {
+      const merge = <T>(target: Record<string, T>, incoming: unknown) => {
+        if (incoming && typeof incoming === 'object')
+          Object.assign(target, incoming as Record<string, T>);
+      };
+      merge(this.library.favorites, library.favorites);
+      merge(this.library.recents, library.recents);
+      merge(this.library.hiddenChannels, library.hiddenChannels);
+      merge(this.library.hiddenGroups, library.hiddenGroups);
+      merge(this.library.customNames, library.customNames);
+      merge(this.library.epgMappings, library.epgMappings);
+      await this.persistLibrary();
+    }
+    if (data.settings && typeof data.settings === 'object') {
+      const patch: Partial<EngineSettings> = {};
+      const { epgHorizonHours, userAgent, allowPrivateNetwork } = data.settings;
+      if (typeof epgHorizonHours === 'number' && epgHorizonHours >= 6 && epgHorizonHours <= 336)
+        patch.epgHorizonHours = epgHorizonHours;
+      if (typeof userAgent === 'string') patch.userAgent = userAgent.slice(0, 256);
+      if (typeof allowPrivateNetwork === 'boolean') patch.allowPrivateNetwork = allowPrivateNetwork;
+      if (Object.keys(patch).length) await this.updateSettings(patch);
+    }
+    this.emit({ type: 'sources' });
+    this.emit({ type: 'channels', sourceId: '' });
+    for (const id of [...result.added, ...result.updated])
+      void this.refreshSource(id).catch(() => undefined);
+    return result;
   }
 
   async refreshEpg(id: string): Promise<{ programCount: number; warnings: string[] }> {
@@ -1154,6 +1388,19 @@ export class OrivueEngine {
     await this.platform.kv.set(LIBRARY_KEY, this.library);
     this.emit({ type: 'library' });
   }
+}
+
+function groupNameOf(channel: ParsedChannel): string {
+  return channel.groupName?.trim() || 'Sin categoría';
+}
+
+function countGroups(entries: ParsedChannel[]): AvailableGroup[] {
+  const counts = new Map<string, number>();
+  for (const channel of entries) {
+    const name = groupNameOf(channel);
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return [...counts].map(([name, channelCount]) => ({ name, channelCount }));
 }
 
 function assertHttpUrl(value: string): void {
