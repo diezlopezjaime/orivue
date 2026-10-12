@@ -12,6 +12,33 @@ export interface FetchTextOptions {
   readonly allowPrivateNetwork?: boolean | undefined;
 }
 
+/** Window of programmes to keep when a guide is read incrementally by the host. */
+export interface FetchGuideOptions {
+  readonly sinceMs: number;
+  readonly untilMs: number;
+  readonly timeoutMs?: number | undefined;
+  readonly headers?: Readonly<Record<string, string>> | undefined;
+  readonly allowPrivateNetwork?: boolean | undefined;
+}
+
+/** `[channel id, start ms, stop ms, title, description, category]`. */
+export type GuideProgrammeRow = readonly [
+  string,
+  number,
+  number,
+  string,
+  string | null,
+  string | null,
+];
+
+export interface FetchedGuide {
+  /** `[channel id, first display name]`. */
+  readonly channels: ReadonlyArray<readonly [string, string]>;
+  readonly programmes: readonly GuideProgrammeRow[];
+  readonly skipped: number;
+  readonly warnings: readonly string[];
+}
+
 export interface KeyValueStore {
   get<T>(key: string): Promise<T | undefined>;
   set<T>(key: string, value: T): Promise<void>;
@@ -22,6 +49,12 @@ export interface EnginePlatform {
   readonly name: 'browser' | 'tauri';
   readonly kv: KeyValueStore;
   fetchText(url: string, options?: FetchTextOptions): Promise<string>;
+  /**
+   * Streams an XMLTV guide outside the webview and returns only the
+   * programmes inside the window. Hosts without it fall back to
+   * `fetchText` plus the in-process parser, bounded by `maxEpgBytes`.
+   */
+  fetchGuide?(url: string, options: FetchGuideOptions): Promise<FetchedGuide>;
 }
 
 export class FetchError extends Error {

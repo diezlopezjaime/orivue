@@ -149,8 +149,14 @@ como formato de stream.
 
 La lista `get.php` solo se descarga si el panel bloquea la API: incluye todas
 las películas y episodios y en proveedores grandes supera los 100 MB. El
-límite para esa descarga es de 120 MB (`maxPlaylistBytes`) y el de la guía
-XMLTV de 120 MB (`maxEpgBytes`); si la guía lo supera, los canales se importan
+límite para esa descarga es de 120 MB (`maxPlaylistBytes`).
+
+La guía XMLTV se descarga a disco y se lee en streaming desde Rust (comando
+`fetch_epg`), de modo que una guía de cientos de MB para miles de canales se
+procesa con memoria acotada: solo llegan al motor los programas dentro del
+horizonte configurado (72 h por defecto). Se aceptan documentos `.xml` y
+`.xml.gz`. En el navegador de desarrollo se usa el parser en proceso con el
+límite `maxEpgBytes` (120 MB). Si la guía falla, los canales se importan
 igualmente y Mis listas muestra el aviso.
 
 ## Ace Stream opcional

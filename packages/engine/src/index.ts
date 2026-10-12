@@ -6,7 +6,10 @@ export {
   readLimitedText,
   FetchError,
   type EnginePlatform,
+  type FetchedGuide,
+  type FetchGuideOptions,
   type FetchTextOptions,
+  type GuideProgrammeRow,
   type KeyValueStore,
 } from './platform.js';
 export { openEngineStorage, type EngineStorage } from './storage.js';

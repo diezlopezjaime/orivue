@@ -241,6 +241,57 @@ describe('OrivueEngine sources', () => {
     expect(ids(api.engine.listChannels().items)).toEqual(ids(playlist.engine.listChannels().items));
   });
 
+  it('reads the guide through the host when it can stream it', async () => {
+    const calls: unknown[] = [];
+    const { platform, requests } = fakePlatform({ 'https://lists.test/': PLAYLIST });
+    const streaming: EnginePlatform = {
+      ...platform,
+      fetchGuide: (url, options) => {
+        calls.push({ url, options });
+        return Promise.resolve({
+          channels: [['News.ES', 'Noticias 24']],
+          programmes: [
+            ['News.ES', NOW - 3_600_000, NOW + 1_800_000, 'Boletín', 'Noticias', 'News'],
+            ['News.ES', NOW + 1_800_000, NOW + 7_200_000, 'Debate', null, null],
+            ['News.ES', NOW - 10 * 3_600_000, NOW - 9 * 3_600_000, 'Antiguo', null, null],
+          ],
+          skipped: 3,
+          warnings: ['the guide ended early with 1 element(s) still open'],
+        });
+      },
+    };
+    counter += 1;
+    const engine = new OrivueEngine({
+      platform: streaming,
+      databaseName: `orivue-test-${counter}`,
+      now: () => NOW,
+    });
+    await engine.init();
+    await engine.updateSettings({ userAgent: 'MyPlayer/9', epgHorizonHours: 48 });
+    const source = await engine.addSource({ kind: 'm3u', name: 'L', url: 'https://lists.test/a' });
+    const result = await engine.refreshSource(source.id);
+    // The guide never goes through fetchText.
+    expect(requests.some((url) => url.includes('guide.test'))).toBe(false);
+    expect(calls).toEqual([
+      {
+        url: 'https://guide.test/epg.xml',
+        options: {
+          sinceMs: NOW - 6 * 3_600_000,
+          untilMs: NOW + 48 * 3_600_000,
+          timeoutMs: 600_000,
+          headers: { 'User-Agent': 'MyPlayer/9' },
+          allowPrivateNetwork: false,
+        },
+      },
+    ]);
+    expect(result.programCount).toBe(2);
+    expect(result.warnings).toContain('the guide ended early with 1 element(s) still open');
+    const channel = engine.listChannels().items.find((c) => c.name === 'Noticias 24')!;
+    const [now] = await engine.epgNow([channel.id]);
+    expect(now?.current?.title).toBe('Boletín');
+    expect(now?.next?.title).toBe('Debate');
+  });
+
   it('sends the configured user agent to panels, lists and streams', async () => {
     const { engine, headersSeen } = await createEngine({
       [`${PANEL}/player_api.php`]: JSON.stringify(ACCOUNT),

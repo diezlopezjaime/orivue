@@ -1,4 +1,9 @@
-import { refineStreamKind, type EnginePlatform, type PlayableStream } from '@orivue/engine';
+import {
+  refineStreamKind,
+  type EnginePlatform,
+  type FetchedGuide,
+  type PlayableStream,
+} from '@orivue/engine';
 import { addPluginListener, invoke } from '@tauri-apps/api/core';
 import type {
   AppPlatform,
@@ -63,6 +68,23 @@ function createEnginePlatform(): EnginePlatform {
           },
         });
         return new TextDecoder().decode(bytes);
+      } catch (error) {
+        throw new Error(message(error));
+      }
+    },
+    async fetchGuide(url, options) {
+      try {
+        const bytes = await invoke<ArrayBuffer | Uint8Array>('fetch_epg', {
+          args: {
+            url,
+            headers: options.headers ?? {},
+            sinceMs: Math.floor(options.sinceMs),
+            untilMs: Math.ceil(options.untilMs),
+            timeoutMs: options.timeoutMs,
+            allowPrivate: options.allowPrivateNetwork ?? false,
+          },
+        });
+        return JSON.parse(new TextDecoder().decode(bytes)) as FetchedGuide;
       } catch (error) {
         throw new Error(message(error));
       }

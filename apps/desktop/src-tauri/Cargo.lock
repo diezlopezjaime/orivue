@@ -2174,7 +2174,9 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 name = "orivue-desktop"
 version = "0.2.1"
 dependencies = [
+ "flate2",
  "orivue-stream-proxy",
+ "quick-xml",
  "serde",
  "serde_json",
  "tauri",

@@ -552,6 +552,79 @@ export class OrivueEngine {
     return result;
   }
 
+  /**
+   * Reads the guide through the host when it can stream it (no size limit,
+   * bounded memory) and otherwise downloads and parses it in process.
+   */
+  private async loadGuide(
+    id: string,
+    epgUrl: string,
+    oldest: number,
+    horizon: number,
+  ): Promise<{ names: Record<string, string>; programs: Program[]; warnings: string[] }> {
+    const names: Record<string, string> = {};
+    const programs: Program[] = [];
+    const push = (
+      channelId: string,
+      start: number,
+      stop: number,
+      title: string,
+      description: string | null,
+      category: string | null,
+    ) => {
+      if (stop < oldest || start > horizon) return;
+      const startAt = new Date(start).toISOString();
+      programs.push({
+        id: `${id}:${stableId('programme', channelId, startAt, title)}`,
+        sourceId: id,
+        epgKey: channelId.toLowerCase(),
+        title,
+        description,
+        category,
+        startAt,
+        stopAt: new Date(stop).toISOString(),
+      });
+    };
+    if (this.platform.fetchGuide) {
+      const guide = await this.platform.fetchGuide(epgUrl, {
+        sinceMs: oldest,
+        untilMs: horizon,
+        timeoutMs: 600_000,
+        ...this.requestHeaders(),
+        allowPrivateNetwork: this.settings.allowPrivateNetwork,
+      });
+      for (const [channelId, name] of guide.channels) names[channelId.toLowerCase()] = name;
+      for (const [channelId, start, stop, title, description, category] of guide.programmes)
+        push(channelId, start, stop, title, description, category);
+      return { names, programs, warnings: guide.warnings.slice(0, 10) };
+    }
+    const content = await this.platform.fetchText(epgUrl, {
+      maxBytes: this.settings.maxEpgBytes,
+      timeoutMs: 300_000,
+      ...this.requestHeaders(),
+      allowPrivateNetwork: this.settings.allowPrivateNetwork,
+    });
+    const parsed = parseXmltv(content);
+    for (const channel of parsed.channels)
+      names[channel.id.toLowerCase()] = channel.displayNames[0] ?? channel.id;
+    for (const programme of parsed.programmes) {
+      const start = programme.start.getTime();
+      push(
+        programme.channelId,
+        start,
+        programme.stop?.getTime() ?? start + 30 * 60_000,
+        programme.title,
+        programme.description ?? null,
+        programme.category ?? null,
+      );
+    }
+    return {
+      names,
+      programs,
+      warnings: parsed.warnings.slice(0, 10).map((warning) => warning.message),
+    };
+  }
+
   async refreshEpg(id: string): Promise<{ programCount: number; warnings: string[] }> {
     const source = this.requireSource(id);
     if (!source.epgUrl) throw new Error('This source has no EPG URL');
@@ -563,35 +636,9 @@ export class OrivueEngine {
     epgUrl: string,
   ): Promise<{ programCount: number; warnings: string[] }> {
     try {
-      const content = await this.platform.fetchText(epgUrl, {
-        maxBytes: this.settings.maxEpgBytes,
-        timeoutMs: 300_000,
-        ...this.requestHeaders(),
-        allowPrivateNetwork: this.settings.allowPrivateNetwork,
-      });
-      const parsed = parseXmltv(content);
-      const names: Record<string, string> = {};
-      for (const channel of parsed.channels)
-        names[channel.id.toLowerCase()] = channel.displayNames[0] ?? channel.id;
       const horizon = this.now() + this.settings.epgHorizonHours * 3_600_000;
       const oldest = this.now() - 6 * 3_600_000;
-      const programs: Program[] = [];
-      for (const programme of parsed.programmes) {
-        const start = programme.start.getTime();
-        const stop = programme.stop?.getTime() ?? start + 30 * 60_000;
-        if (stop < oldest || start > horizon) continue;
-        const epgKey = programme.channelId.toLowerCase();
-        programs.push({
-          id: `${id}:${programme.id}`,
-          sourceId: id,
-          epgKey,
-          title: programme.title,
-          description: programme.description ?? null,
-          category: programme.category ?? null,
-          startAt: new Date(start).toISOString(),
-          stopAt: new Date(stop).toISOString(),
-        });
-      }
+      const { names, programs, warnings } = await this.loadGuide(id, epgUrl, oldest, horizon);
       await this.storage.replaceEpg(id, names, programs);
       this.epgNames.set(id, names);
       this.nowNextCache.clear();
@@ -607,10 +654,7 @@ export class OrivueEngine {
       await this.persistSources();
       this.emit({ type: 'sources' });
       this.emit({ type: 'epg', sourceId: id });
-      return {
-        programCount: programs.length,
-        warnings: parsed.warnings.slice(0, 10).map((warning) => warning.message),
-      };
+      return { programCount: programs.length, warnings };
     } catch (error) {
       this.replaceSource({
         ...this.requireSource(id),

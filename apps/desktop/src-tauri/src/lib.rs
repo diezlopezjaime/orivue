@@ -3,6 +3,8 @@
 //! bounded downloads without CORS, a durable key-value store and device
 //! information. Everything is shared by desktop, Android, Fire TV and iOS.
 
+mod epg;
+
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -14,11 +16,15 @@ use serde::{Deserialize, Serialize};
 use tauri::{Manager, RunEvent, State};
 
 const MAX_FETCH_BYTES: usize = 200 * 1024 * 1024;
+/// Guides are streamed to disk and read incrementally, so the cap only
+/// protects the disk, not memory.
+const MAX_EPG_BYTES: usize = 2 * 1024 * 1024 * 1024;
 const MAX_KV_BYTES: usize = 16 * 1024 * 1024;
 
 struct AppState {
     proxy: ProxyHandle,
     kv_dir: PathBuf,
+    cache_dir: PathBuf,
 }
 
 #[derive(Clone, Serialize)]
@@ -35,6 +41,20 @@ struct DeviceInfo {
     version: &'static str,
     mobile: bool,
     debug: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FetchEpgArgs {
+    url: String,
+    #[serde(default)]
+    headers: SessionHeaders,
+    since_ms: i64,
+    until_ms: i64,
+    #[serde(default)]
+    timeout_ms: Option<u64>,
+    #[serde(default)]
+    allow_private: bool,
 }
 
 #[derive(Deserialize)]
@@ -98,6 +118,60 @@ async fn fetch_source(
         .await
         .map_err(|error| error.to_string())?;
     Ok(tauri::ipc::Response::new(fetched.text.into_bytes()))
+}
+
+/// Downloads an XMLTV guide to the cache directory and returns, as JSON, the
+/// channel names and the programmes inside the window. The webview never
+/// holds the document itself, so there is no practical size limit.
+#[tauri::command]
+async fn fetch_epg(
+    state: State<'_, AppState>,
+    args: FetchEpgArgs,
+) -> Result<tauri::ipc::Response, String> {
+    std::fs::create_dir_all(&state.cache_dir).map_err(|error| error.to_string())?;
+    let path = state.cache_dir.join(format!(
+        "epg-{}.xml",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let downloaded = state
+        .proxy
+        .fetch_to_file(
+            &args.url,
+            FetchTextOptions {
+                headers: args.headers,
+                max_bytes: MAX_EPG_BYTES,
+                timeout: Duration::from_millis(
+                    args.timeout_ms.unwrap_or(300_000).clamp(1_000, 1_800_000),
+                ),
+                policy: if args.allow_private {
+                    DestinationPolicy::AllowPrivate
+                } else {
+                    DestinationPolicy::PublicOnly
+                },
+            },
+            &path,
+        )
+        .await;
+    let result = match downloaded {
+        Ok(_) => {
+            let window = epg::GuideWindow {
+                since_ms: args.since_ms,
+                until_ms: args.until_ms,
+            };
+            let parse_path = path.clone();
+            tauri::async_runtime::spawn_blocking(move || epg::read_guide(&parse_path, &window))
+                .await
+                .map_err(|error| error.to_string())
+                .and_then(|guide| guide)
+                .and_then(|guide| serde_json::to_vec(&guide).map_err(|error| error.to_string()))
+        }
+        Err(error) => Err(error.to_string()),
+    };
+    let _ = std::fs::remove_file(&path);
+    result.map(tauri::ipc::Response::new)
 }
 
 #[tauri::command]
@@ -183,6 +257,7 @@ pub fn run() {
             proxy_info,
             device_info,
             fetch_source,
+            fetch_epg,
             open_playback,
             close_playback,
             kv_get,
@@ -192,11 +267,16 @@ pub fn run() {
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
+            let cache_dir = app
+                .path()
+                .app_cache_dir()
+                .unwrap_or_else(|_| data_dir.join("cache"));
             let proxy =
                 tauri::async_runtime::block_on(ProxyServer::start(proxy_options(tauri::is_dev())))?;
             app.manage(AppState {
                 proxy,
                 kv_dir: data_dir.join("kv"),
+                cache_dir,
             });
             Ok(())
         })

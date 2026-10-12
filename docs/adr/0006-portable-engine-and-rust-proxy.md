@@ -32,8 +32,11 @@ segmentos sin un intermediario local.
    navegador para desarrollo y pruebas e2e.
 3. **Las operaciones de red privilegiadas se hacen en Rust** dentro del
    proceso Tauri, compartidas por todas las plataformas:
-   - `fetch_source`: descarga listas y guías con límites de tamaño, tiempo y
+   - `fetch_source`: descarga listas y JSON con límites de tamaño, tiempo y
      redirecciones y con bloqueo de destinos privados salvo opción explícita.
+   - `fetch_epg`: descarga la guía XMLTV a disco y la lee en streaming
+     (`quick-xml`, gzip opcional) devolviendo solo los programas del horizonte,
+     porque una guía de miles de canales no cabe como cadena en el webview.
    - **Proxy de streams loopback** (`crates/stream-proxy`): servidor HTTP en
      `127.0.0.1` con puerto aleatorio y token por ejecución. Solo sirve URLs
      que pertenezcan a una sesión de reproducción abierta por la app, reenvía
