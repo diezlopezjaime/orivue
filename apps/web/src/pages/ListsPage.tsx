@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 import { api, type CreatePlaylistInput, type CreateXtreamInput } from '../api';
 import { Icon } from '../components/Icon';
+import { SourceCategories } from '../components/SourceCategories';
 import { formatDate, useT } from '../i18n';
 import type { Playlist } from '../types';
 
@@ -26,6 +27,7 @@ export function ListsPage() {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<SourceTab>('url');
   const [editing, setEditing] = useState<string>();
+  const [choosing, setChoosing] = useState<string>();
   const [fileName, setFileName] = useState(() => t('lists.fileDefault'));
   const [notice, setNotice] = useState<string>();
 
@@ -86,6 +88,7 @@ export function ListsPage() {
     if (name && host && username && password)
       createXtream.mutate({ name, host, username, password, output });
   };
+  const choosingPlaylist = playlists.data?.find((item) => item.id === choosing);
   const pending = create.isPending || createXtream.isPending;
   const formError = errorText(create.error) ?? errorText(createXtream.error);
   const actionError = errorText(refresh.error) ?? errorText(refreshEpg.error);
@@ -255,6 +258,7 @@ export function ListsPage() {
             editing={editing === playlist.id}
             busy={refresh.isPending || refreshEpg.isPending || playlist.refreshing !== null}
             onEdit={() => setEditing(playlist.id)}
+            onChooseCategories={() => setChoosing(playlist.id)}
             onRename={(name) => {
               if (name && name !== playlist.name)
                 update.mutate({ id: playlist.id, input: { name } });
@@ -290,6 +294,16 @@ export function ListsPage() {
           <p>{t('lists.emptyHint')}</p>
         </div>
       )}
+      {choosingPlaylist && (
+        <SourceCategories
+          playlist={choosingPlaylist}
+          onClose={() => setChoosing(undefined)}
+          onSaved={(channels) => {
+            setChoosing(undefined);
+            setNotice(t('lists.categoriesSaved', { name: choosingPlaylist.name, channels }));
+          }}
+        />
+      )}
     </section>
   );
 }
@@ -299,6 +313,7 @@ function PlaylistCard({
   editing,
   busy,
   onEdit,
+  onChooseCategories,
   onRename,
   onRefresh,
   onRefreshEpg,
@@ -309,6 +324,7 @@ function PlaylistCard({
   editing: boolean;
   busy: boolean;
   onEdit: () => void;
+  onChooseCategories: () => void;
   onRename: (name: string) => void;
   onRefresh: () => void;
   onRefreshEpg: () => void;
@@ -457,6 +473,21 @@ function PlaylistCard({
             aria-label={t('lists.refreshGuide', { name: playlist.name })}
           >
             <Icon name="guide" />
+          </button>
+        )}
+        {playlist.kind !== 'file' && (
+          <button
+            data-tv-focus
+            onClick={onChooseCategories}
+            disabled={busy}
+            aria-label={t('lists.chooseCategories', { name: playlist.name })}
+          >
+            {t('lists.categories')}
+            {playlist.includedGroups && (
+              <small className="count-chip">
+                {playlist.includedGroups.length}/{playlist.availableGroups.length}
+              </small>
+            )}
           </button>
         )}
         <button

@@ -6,6 +6,8 @@
 import type {
   AddSourceInput,
   Channel as EngineChannel,
+  ConfigExport,
+  ConfigImportResult,
   EngineSettings,
   Program as EngineProgram,
   VodKind,
@@ -217,6 +219,19 @@ export const api = {
   seriesInfo: (id: string) => getEngine().getSeriesInfo(id),
   playableVod: (id: string, episodeId?: string) => getEngine().getPlayableVod(id, episodeId),
 
+  setIncludedGroups: (id: string, groups: string[] | null) =>
+    getEngine().setIncludedGroups(id, groups),
+  exportConfig: (includeCredentials: boolean): ConfigExport =>
+    getEngine().exportConfig({ includeCredentials }),
+  importConfig: (text: string): Promise<ConfigImportResult> => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text) as unknown;
+    } catch {
+      return Promise.reject(new Error('The text is not valid JSON'));
+    }
+    return getEngine().importConfig(parsed);
+  },
   settings: (): EngineSettings => getEngine().getSettings(),
   updateSettings: (patch: Partial<EngineSettings>) => getEngine().updateSettings(patch),
 };

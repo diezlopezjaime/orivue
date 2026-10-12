@@ -159,6 +159,21 @@ horizonte configurado (72 h por defecto). Se aceptan documentos `.xml` y
 límite `maxEpgBytes` (120 MB). Si la guía falla, los canales se importan
 igualmente y Mis listas muestra el aviso.
 
+## Categorías a importar y traslado entre dispositivos
+
+Con proveedores de miles de canales conviene importar solo lo que interesa:
+en **Mis listas → Categorías** marca las categorías (por ejemplo las que
+contienen `ES` y `SPORT`). El resto no se descarga ni ocupa guía, y si el
+proveedor añade categorías nuevas la tarjeta lo avisa. La selección se guarda
+en la lista y se aplica en cada actualización.
+
+Para llevar la misma configuración a otro dispositivo, **Ajustes → Copia y
+traslado → Exportar configuración** genera un JSON con listas, categorías
+elegidas, favoritos, nombres, ocultos, asociaciones de guía y ajustes
+(contraseñas Xtream solo si marcas la casilla). En el otro dispositivo,
+**Importar configuración** acepta el texto pegado o el archivo. No hay cuentas
+ni servidor: el archivo es tuyo y nada sale del dispositivo.
+
 ## Ace Stream opcional
 
 Orivue funciona sin Ace Stream. Si hay un motor en `127.0.0.1:6878`, los

@@ -1676,3 +1676,51 @@ html[data-tv='true'] .seek-bar input[type='range'] {
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   }
 }
+
+/* Category selection and configuration transfer */
+.categories-summary {
+  margin: 4px 0 10px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.categories-filter {
+  width: 100%;
+  margin-bottom: 8px;
+}
+.categories-bulk {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.source-categories .group-list {
+  max-height: 46vh;
+  overflow: auto;
+}
+.count-chip {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(112, 240, 187, 0.16);
+  color: var(--accent);
+  font-size: 0.7rem;
+}
+.config-transfer textarea {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  resize: vertical;
+}
+.file-picker {
+  display: inline-block;
+  margin: 8px 0;
+}
+.file-picker input {
+  display: block;
+  margin-top: 4px;
+}
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}

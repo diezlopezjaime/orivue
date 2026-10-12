@@ -16,16 +16,19 @@ El engine recibe un `EnginePlatform`:
 
 ## Fuentes
 
-| Método                                 | Función                                                 |
-| -------------------------------------- | ------------------------------------------------------- |
-| `listSources()` / `getSource(id)`      | Fuentes con URL y contraseña redactadas                 |
-| `addSource({kind:'m3u'                 | 'xtream'                                                | 'file'})` | Crear; una URL `get.php` se convierte en fuente Xtream |
-| `updateSource(id, patch)`              | Nombre, URL, guía, refresco, formato Xtream             |
-| `removeSource(id)`                     | Borra canales, programas y contenido asociados          |
-| `refreshSource(id)`                    | Descarga, parsea y sustituye la revisión; luego la guía |
-| `refreshEpg(id)`                       | Solo la guía                                            |
-| `validateXtream(host, usuario, clave)` | Consulta `player_api.php` sin crear la fuente           |
-| `refreshDue()` / `startAutoRefresh()`  | Refresco automático por intervalo                       |
+| Método                                 | Función                                                         |
+| -------------------------------------- | --------------------------------------------------------------- |
+| `listSources()` / `getSource(id)`      | Fuentes con URL y contraseña redactadas                         |
+| `addSource({kind:'m3u'                 | 'xtream'                                                        | 'file'})` | Crear; una URL `get.php` se convierte en fuente Xtream |
+| `setIncludedGroups(id, nombres\|null)` | Categorías a importar (`null` = todas); refresca la fuente      |
+| `exportConfig({includeCredentials})`   | Instantánea portable de fuentes, biblioteca y ajustes           |
+| `importConfig(json)`                   | Aplica la instantánea conservando ids; importa en segundo plano |
+| `updateSource(id, patch)`              | Nombre, URL, guía, refresco, formato Xtream                     |
+| `removeSource(id)`                     | Borra canales, programas y contenido asociados                  |
+| `refreshSource(id)`                    | Descarga, parsea y sustituye la revisión; luego la guía         |
+| `refreshEpg(id)`                       | Solo la guía                                                    |
+| `validateXtream(host, usuario, clave)` | Consulta `player_api.php` sin crear la fuente                   |
+| `refreshDue()` / `startAutoRefresh()`  | Refresco automático por intervalo                               |
 
 ## Biblioteca y consultas
 
