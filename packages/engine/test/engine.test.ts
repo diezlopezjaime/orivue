@@ -67,11 +67,13 @@ const ACCOUNT = {
 
 function fakePlatform(responses: Record<string, string | (() => string)>) {
   const requests: string[] = [];
+  const headersSeen: Record<string, string | undefined>[] = [];
   const platform: EnginePlatform = {
     name: 'browser',
     kv: memoryKeyValueStore(),
-    fetchText: (url) => {
+    fetchText: (url, options) => {
       requests.push(url);
+      headersSeen.push({ ...(options?.headers ?? {}) });
       const match = Object.entries(responses)
         .sort((a, b) => b[0].length - a[0].length)
         .find(([prefix]) => url.startsWith(prefix));
@@ -80,7 +82,7 @@ function fakePlatform(responses: Record<string, string | (() => string)>) {
       return Promise.resolve(typeof body === 'function' ? body() : body);
     },
   };
-  return { platform, requests };
+  return { platform, requests, headersSeen };
 }
 
 let counter = 0;
@@ -88,7 +90,7 @@ async function createEngine(
   responses: Record<string, string | (() => string)>,
   randomId?: () => string,
 ) {
-  const { platform, requests } = fakePlatform(responses);
+  const { platform, requests, headersSeen } = fakePlatform(responses);
   counter += 1;
   const engine = new OrivueEngine({
     platform,
@@ -97,7 +99,7 @@ async function createEngine(
     randomId: randomId ?? (() => `id${counter}-${Math.random().toString(36).slice(2, 8)}`),
   });
   await engine.init();
-  return { engine, platform, requests };
+  return { engine, platform, requests, headersSeen };
 }
 
 describe('OrivueEngine sources', () => {
@@ -239,6 +241,37 @@ describe('OrivueEngine sources', () => {
     expect(ids(api.engine.listChannels().items)).toEqual(ids(playlist.engine.listChannels().items));
   });
 
+  it('sends the configured user agent to panels, lists and streams', async () => {
+    const { engine, headersSeen } = await createEngine({
+      [`${PANEL}/player_api.php`]: JSON.stringify(ACCOUNT),
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_live_categories`]:
+        LIVE_CATEGORIES,
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_live_streams`]:
+        LIVE_STREAMS,
+      'https://lists.test/': PLAYLIST,
+    });
+    const plain = await engine.addSource({ kind: 'm3u', name: 'L', url: 'https://lists.test/a' });
+    await engine.refreshSource(plain.id);
+    expect(headersSeen.at(-1)).toEqual({});
+    await engine.updateSettings({ userAgent: 'MyPlayer/9' });
+    const panel = await engine.addSource({
+      kind: 'xtream',
+      name: 'P',
+      host: PANEL,
+      username: 'alice',
+      password: 's3cret',
+    });
+    await engine.refreshSource(panel.id);
+    const panelRequests = headersSeen.slice(-7);
+    expect(panelRequests.every((headers) => headers['User-Agent'] === 'MyPlayer/9')).toBe(true);
+    const channels = engine.listChannels().items;
+    const live = await engine.getPlayable(channels.find((c) => c.name === 'Noticias 24')!.id);
+    expect(live.headers['User-Agent']).toBe('MyPlayer/9');
+    // A per-channel agent from the list wins over the global setting.
+    const custom = await engine.getPlayable(channels.find((c) => c.name === 'Cine Clásico')!.id);
+    expect(custom.headers).toEqual({ 'User-Agent': 'Orivue Test' });
+  });
+
   it('explains the playlist size limit instead of leaking the transport error', async () => {
     const { engine } = await createEngine({
       [`${PANEL}/list.m3u`]: () => {
@@ -247,7 +280,7 @@ describe('OrivueEngine sources', () => {
     });
     const source = await engine.addSource({ kind: 'm3u', name: 'Big', url: `${PANEL}/list.m3u` });
     await expect(engine.refreshSource(source.id)).rejects.toThrow(
-      /The playlist exceeds the 120 MB limit/,
+      /^Channels: the playlist exceeds the 120 MB limit/,
     );
   });
 
@@ -308,17 +341,86 @@ describe('OrivueEngine sources', () => {
       url: 'https://lists.test/a',
       autoRefreshMinutes: 10,
     });
-    await engine.addSource({
+    const manual = await engine.addSource({
       kind: 'm3u',
       name: 'Manual',
       url: 'https://lists.test/b',
       autoRefreshMinutes: 0,
     });
+    await engine.refreshSource(manual.id);
     expect(await engine.refreshDue()).toEqual([due.id]);
     expect(requests.filter((url) => url.startsWith('https://lists'))).toEqual([
+      'https://lists.test/b',
       'https://lists.test/a',
     ]);
     expect(await engine.refreshDue()).toEqual([]);
+  });
+
+  it('finishes the first import of a manual source that never completed', async () => {
+    const { engine } = await createEngine({
+      'https://lists.test/ok': PLAYLIST,
+      'https://lists.test/broken': () => {
+        throw new Error('HTTP 503');
+      },
+    });
+    const ok = await engine.addSource({
+      kind: 'm3u',
+      name: 'Interrupted',
+      url: 'https://lists.test/ok',
+      autoRefreshMinutes: 0,
+    });
+    const broken = await engine.addSource({
+      kind: 'm3u',
+      name: 'Broken',
+      url: 'https://lists.test/broken',
+      autoRefreshMinutes: 0,
+    });
+    expect(await engine.refreshDue()).toEqual([ok.id]);
+    expect(engine.getSource(ok.id)?.status).toBe('ready');
+    // The failed one is recorded as an error and is not retried in a loop.
+    expect(engine.getSource(broken.id)?.status).toBe('error');
+    expect(engine.getSource(broken.id)?.lastError).toMatch(/^Channels: /);
+    expect(await engine.refreshDue()).toEqual([]);
+  });
+
+  it('reports the refresh step while it runs and keeps the warnings afterwards', async () => {
+    const { engine } = await createEngine({
+      [`${PANEL}/player_api.php`]: JSON.stringify(ACCOUNT),
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_live_categories`]:
+        LIVE_CATEGORIES,
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=get_live_streams`]:
+        LIVE_STREAMS,
+      [`${PANEL}/player_api.php?username=alice&password=s3cret&action=`]: () => {
+        throw new Error('HTTP 500');
+      },
+      [`${PANEL}/xmltv.php`]: () => {
+        throw new Error('the stream could not be reached: the source exceeds the size limit');
+      },
+    });
+    const steps: (string | null)[] = [];
+    engine.subscribe((event) => {
+      if (event.type === 'refresh')
+        steps.push(engine.getSource(event.sourceId)?.refreshing ?? null);
+    });
+    const source = await engine.addSource({
+      kind: 'xtream',
+      name: 'Panel',
+      host: PANEL,
+      username: 'alice',
+      password: 's3cret',
+    });
+    expect(source.refreshing).toBeNull();
+    const result = await engine.refreshSource(source.id);
+    expect(steps).toEqual(['live', 'account', 'live', 'vod', 'epg', null]);
+    expect(result.channelCount).toBe(2);
+    const refreshed = engine.getSource(source.id)!;
+    expect(refreshed.refreshing).toBeNull();
+    expect(refreshed.status).toBe('ready');
+    expect(refreshed.lastWarnings).toEqual([
+      expect.stringMatching(/^VOD: /),
+      expect.stringMatching(/^EPG: .*size limit/),
+    ]);
+    expect(JSON.stringify(refreshed.lastWarnings)).not.toContain('s3cret');
   });
 });
 

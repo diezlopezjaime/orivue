@@ -119,6 +119,11 @@ export const es = {
     kindFile: 'Archivo',
     kindUrl: 'URL M3U',
     pending: 'Pendiente',
+    stepAccount: 'Comprobando la cuenta…',
+    stepLive: 'Descargando canales…',
+    stepVod: 'Descargando catálogo a la carta…',
+    stepEpg: 'Descargando guía…',
+    moreWarnings: 'y {count} avisos más',
     error: 'Con errores',
     ready: 'Lista disponible',
     programs: '{count} programas',
@@ -176,6 +181,9 @@ export const es = {
     privateHint:
       'Desactivado por defecto para que una lista maliciosa no pueda apuntar a servicios de tu propia red.',
     epgHorizon: 'Horizonte de guía (horas)',
+    userAgent: 'Agente de usuario (User-Agent)',
+    userAgentHint:
+      'Vacío usa el valor por defecto, que se presenta como VLC porque muchos paneles descartan clientes que no reconocen. Cámbialo solo si tu proveedor exige uno concreto.',
     diagnostics: 'Diagnóstico',
     platform: 'Plataforma',
     version: 'Versión',

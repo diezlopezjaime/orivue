@@ -47,6 +47,7 @@ import type {
   Program,
   PublicSource,
   RefreshResult,
+  RefreshStep,
   SeriesInfo,
   Source,
   StoredChannel,
@@ -69,6 +70,7 @@ export const DEFAULT_SETTINGS: EngineSettings = {
   epgHorizonHours: 72,
   maxPlaylistBytes: 120 * 1024 * 1024,
   maxEpgBytes: 120 * 1024 * 1024,
+  userAgent: '',
 };
 
 function emptyLibrary(): LibraryState {
@@ -103,7 +105,7 @@ export class OrivueEngine {
   private vodIndex = new Map<string, VodItem>();
   private epgNames = new Map<string, Record<string, string>>();
   private readonly listeners = new Set<EngineListener>();
-  private readonly refreshing = new Set<string>();
+  private readonly refreshing = new Map<string, RefreshStep>();
   private readonly nowNextCache = new Map<string, { value: NowNext; expiresAt: number }>();
   private readonly now: () => number;
   private readonly aceStreamEndpoint: string;
@@ -126,7 +128,10 @@ export class OrivueEngine {
       this.platform.kv.get<Partial<LibraryState>>(LIBRARY_KEY),
       this.platform.kv.get<Partial<EngineSettings>>(SETTINGS_KEY),
     ]);
-    this.sources = Array.isArray(sources) ? sources : [];
+    // Sources saved by older versions lack the fields added since.
+    this.sources = Array.isArray(sources)
+      ? sources.map((source) => ({ ...source, lastWarnings: source.lastWarnings ?? [] }))
+      : [];
     this.library = { ...emptyLibrary(), ...(library ?? {}) };
     this.settings = { ...DEFAULT_SETTINGS, ...(settings ?? {}) };
     this.channelsBySource = await this.storage.readAllChannels();
@@ -190,7 +195,13 @@ export class OrivueEngine {
             output: source.xtream.output,
           }
         : null,
+      refreshing: this.refreshing.get(source.id) ?? null,
     };
+  }
+
+  private setRefreshStep(id: string, step: RefreshStep): void {
+    this.refreshing.set(id, step);
+    this.emit({ type: 'refresh', sourceId: id, phase: 'step' });
   }
 
   async addSource(input: AddSourceInput): Promise<PublicSource> {
@@ -216,6 +227,7 @@ export class OrivueEngine {
       movieCount: 0,
       seriesCount: 0,
       account: null,
+      lastWarnings: [],
       createdAt: now,
       updatedAt: now,
     };
@@ -310,8 +322,9 @@ export class OrivueEngine {
     return fetchAccountInfo(credentials, async (url, signal) => {
       const text = await this.platform.fetchText(url, {
         maxBytes: 512 * 1024,
-        timeoutMs: 15_000,
+        timeoutMs: 30_000,
         signal,
+        ...this.requestHeaders(),
         allowPrivateNetwork: this.settings.allowPrivateNetwork,
       });
       return JSON.parse(text) as unknown;
@@ -321,10 +334,10 @@ export class OrivueEngine {
   async refreshSource(id: string): Promise<RefreshResult> {
     const source = this.requireSource(id);
     if (this.refreshing.has(id)) throw new Error('This source is already being refreshed');
-    this.refreshing.add(id);
+    this.refreshing.set(id, 'live');
     this.emit({ type: 'refresh', sourceId: id, phase: 'start' });
+    const warnings: string[] = [];
     try {
-      const warnings: string[] = [];
       let entries: ParsedChannel[];
       let discoveredEpgUrl: string | undefined;
       let account: XtreamAccountInfo | null = source.account;
@@ -336,12 +349,14 @@ export class OrivueEngine {
           warnings,
         ));
       } else if (source.kind === 'xtream') {
+        this.setRefreshStep(id, 'account');
         try {
           account = await this.fetchAccount(source.xtream!);
         } catch (error) {
           if ((error as { code?: string }).code === 'auth-failed') throw error;
-          warnings.push('No se pudo leer la información de la cuenta Xtream.');
+          warnings.push(`Account: ${safeError(error)}`);
         }
+        this.setRefreshStep(id, 'live');
         entries = await this.fetchXtreamLive(id, source.xtream!, warnings);
       } else {
         const content = await this.fetchPlaylist(source.url!);
@@ -353,6 +368,7 @@ export class OrivueEngine {
       }
       let catalogue: { movies: VodItem[]; series: VodItem[] } | undefined;
       if (source.kind === 'xtream') {
+        this.setRefreshStep(id, 'vod');
         try {
           const fetched = await this.fetchCatalogue(source);
           // An empty catalogue means the panel does not expose VOD through the API.
@@ -403,6 +419,7 @@ export class OrivueEngine {
         seriesCount: catalogue ? catalogue.series.length : this.requireSource(id).seriesCount,
         account,
         epgUrl,
+        lastWarnings: warnings,
         updatedAt: now,
       });
       await this.persistSources();
@@ -411,6 +428,7 @@ export class OrivueEngine {
       if (catalogue) this.emit({ type: 'vod', sourceId: id });
       let programCount = this.requireSource(id).programCount;
       if (epgUrl) {
+        this.setRefreshStep(id, 'epg');
         try {
           const epg = await this.refreshEpgInternal(id, epgUrl);
           programCount = epg.programCount;
@@ -418,7 +436,10 @@ export class OrivueEngine {
         } catch (error) {
           warnings.push(`EPG: ${safeError(error)}`);
         }
+        this.replaceSource({ ...this.requireSource(id), lastWarnings: warnings });
+        await this.persistSources();
       }
+      this.refreshing.delete(id);
       this.emit({ type: 'refresh', sourceId: id, phase: 'done' });
       const refreshed = this.requireSource(id);
       return {
@@ -434,9 +455,11 @@ export class OrivueEngine {
         ...this.requireSource(id),
         status: 'error',
         lastError: safeError(error),
+        lastWarnings: warnings,
         updatedAt: now,
       });
       await this.persistSources();
+      this.refreshing.delete(id);
       this.emit({ type: 'sources' });
       this.emit({ type: 'refresh', sourceId: id, phase: 'error' });
       throw new Error(safeError(error));
@@ -461,13 +484,15 @@ export class OrivueEngine {
     try {
       return await this.platform.fetchText(url, {
         maxBytes,
-        timeoutMs: 60_000,
+        timeoutMs: 300_000,
+        ...this.requestHeaders(),
         allowPrivateNetwork: this.settings.allowPrivateNetwork,
       });
     } catch (error) {
-      if (/size limit/i.test(safeError(error)))
-        throw new Error(`The playlist exceeds the ${Math.round(maxBytes / 1_048_576)} MB limit`);
-      throw error;
+      const reason = /size limit/i.test(safeError(error))
+        ? `the playlist exceeds the ${Math.round(maxBytes / 1_048_576)} MB limit`
+        : safeError(error);
+      throw new Error(`Channels: ${reason}`);
     }
   }
 
@@ -540,7 +565,8 @@ export class OrivueEngine {
     try {
       const content = await this.platform.fetchText(epgUrl, {
         maxBytes: this.settings.maxEpgBytes,
-        timeoutMs: 120_000,
+        timeoutMs: 300_000,
+        ...this.requestHeaders(),
         allowPrivateNetwork: this.settings.allowPrivateNetwork,
       });
       const parsed = parseXmltv(content);
@@ -601,10 +627,16 @@ export class OrivueEngine {
   async refreshDue(): Promise<string[]> {
     const refreshed: string[] = [];
     for (const source of this.sources) {
-      if (!source.autoRefreshMinutes || this.refreshing.has(source.id)) continue;
+      if (this.refreshing.has(source.id)) continue;
+      // A source that never finished its first import (the app was closed
+      // half-way, for instance) is picked up even when set to manual.
+      const neverImported = source.status === 'pending' && !source.lastUpdatedAt;
+      const interval = source.autoRefreshMinutes;
       const due =
-        !source.lastUpdatedAt ||
-        this.now() - Date.parse(source.lastUpdatedAt) >= source.autoRefreshMinutes * 60_000;
+        neverImported ||
+        (interval > 0 &&
+          (!source.lastUpdatedAt ||
+            this.now() - Date.parse(source.lastUpdatedAt) >= interval * 60_000));
       if (!due) continue;
       try {
         await this.refreshSource(source.id);
@@ -618,6 +650,7 @@ export class OrivueEngine {
 
   startAutoRefresh(intervalMs = 60_000): void {
     this.stopAutoRefresh();
+    void this.refreshDue();
     this.timer = setInterval(() => void this.refreshDue(), intervalMs);
   }
 
@@ -867,17 +900,32 @@ export class OrivueEngine {
       live: kind !== 'http',
       url: stored.url,
       kind,
-      headers: stored.headers,
+      headers: this.withUserAgent(stored.headers),
       allowLoopback: this.settings.allowPrivateNetwork,
     };
   }
 
+  /** Extra `fetchText` options carrying the configured user agent, if any. */
+  private requestHeaders(): { headers?: Record<string, string> } {
+    const agent = this.settings.userAgent.trim();
+    return agent ? { headers: { 'User-Agent': agent } } : {};
+  }
+
+  /** Adds the configured user agent to stream headers that do not set one. */
+  private withUserAgent(headers: Readonly<Record<string, string>>): Record<string, string> {
+    const agent = this.settings.userAgent.trim();
+    if (!agent || Object.keys(headers).some((name) => name.toLowerCase() === 'user-agent'))
+      return { ...headers };
+    return { ...headers, 'User-Agent': agent };
+  }
+
   // --------------------------------------------------------------------- VOD
 
-  private async fetchJson(url: string, maxBytes = 64 * 1024 * 1024): Promise<unknown> {
+  private async fetchJson(url: string, maxBytes = 128 * 1024 * 1024): Promise<unknown> {
     const text = await this.platform.fetchText(url, {
       maxBytes,
-      timeoutMs: 90_000,
+      timeoutMs: 120_000,
+      ...this.requestHeaders(),
       allowPrivateNetwork: this.settings.allowPrivateNetwork,
     });
     return JSON.parse(text) as unknown;
@@ -1012,7 +1060,7 @@ export class OrivueEngine {
         live: false,
         url: buildMovieUrl(credentials, item.remoteId, item.containerExtension ?? 'mp4'),
         kind: 'http',
-        headers: {},
+        headers: this.withUserAgent({}),
         allowLoopback: this.settings.allowPrivateNetwork,
       };
     }
@@ -1027,7 +1075,7 @@ export class OrivueEngine {
       live: false,
       url: buildEpisodeUrl(credentials, episode.id, episode.containerExtension),
       kind: 'http',
-      headers: {},
+      headers: this.withUserAgent({}),
       allowLoopback: this.settings.allowPrivateNetwork,
     };
   }

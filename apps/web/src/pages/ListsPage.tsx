@@ -88,6 +88,7 @@ export function ListsPage() {
   };
   const pending = create.isPending || createXtream.isPending;
   const formError = errorText(create.error) ?? errorText(createXtream.error);
+  const actionError = errorText(refresh.error) ?? errorText(refreshEpg.error);
 
   return (
     <section className="page lists-page">
@@ -245,13 +246,14 @@ export function ListsPage() {
         </div>
       )}
       {notice && <p className="notice">{notice}</p>}
+      {actionError && <p className="notice form-error">{actionError}</p>}
       <div className="playlist-grid">
         {playlists.data?.map((playlist) => (
           <PlaylistCard
             key={playlist.id}
             playlist={playlist}
             editing={editing === playlist.id}
-            busy={refresh.isPending || refreshEpg.isPending}
+            busy={refresh.isPending || refreshEpg.isPending || playlist.refreshing !== null}
             onEdit={() => setEditing(playlist.id)}
             onRename={(name) => {
               if (name && name !== playlist.name)
@@ -337,6 +339,16 @@ function PlaylistCard({
         ? t('lists.guideError')
         : t('lists.guidePending')
     : t('lists.noGuide');
+  const stepLabel =
+    playlist.refreshing === 'account'
+      ? t('lists.stepAccount')
+      : playlist.refreshing === 'live'
+        ? t('lists.stepLive')
+        : playlist.refreshing === 'vod'
+          ? t('lists.stepVod')
+          : playlist.refreshing === 'epg'
+            ? t('lists.stepEpg')
+            : null;
   return (
     <article className="playlist-card">
       <div className="playlist-icon">
@@ -358,12 +370,15 @@ function PlaylistCard({
           <h2>{playlist.name}</h2>
         )}
         <p>
-          <span className={`status-dot ${playlist.status === 'error' ? 'error' : ''}`} />
-          {playlist.status === 'pending'
-            ? t('lists.pending')
-            : playlist.status === 'error'
-              ? t('lists.error')
-              : t('lists.ready')}
+          <span
+            className={`status-dot ${playlist.status === 'error' ? 'error' : ''} ${stepLabel ? 'busy' : ''}`}
+          />
+          {stepLabel ??
+            (playlist.status === 'pending'
+              ? t('lists.pending')
+              : playlist.status === 'error'
+                ? t('lists.error')
+                : t('lists.ready'))}
           <span className="kind-chip">{kindLabel}</span>
         </p>
         <strong>
@@ -397,6 +412,16 @@ function PlaylistCard({
         {playlist.lastError && <em>{playlist.lastError}</em>}
         {playlist.epgError && !playlist.lastError && (
           <em>{t('lists.guidePrefix', { error: playlist.epgError })}</em>
+        )}
+        {playlist.lastWarnings.length > 0 && (
+          <ul className="playlist-warnings">
+            {playlist.lastWarnings.slice(0, 5).map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+            {playlist.lastWarnings.length > 5 && (
+              <li>{t('lists.moreWarnings', { count: playlist.lastWarnings.length - 5 })}</li>
+            )}
+          </ul>
         )}
         {playlist.kind !== 'file' && (
           <label className="refresh-select">

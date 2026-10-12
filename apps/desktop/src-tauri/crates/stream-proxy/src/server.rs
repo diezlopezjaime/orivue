@@ -29,6 +29,12 @@ const FORWARDED_RESPONSE_HEADERS: [&str; 4] = [
     "accept-ranges",
     "content-range",
 ];
+/// Time allowed to open the TCP/TLS connection.
+const CONNECT_TIMEOUT_SECS: u64 = 20;
+/// Time allowed between two chunks of a response; large panels take a while
+/// to start generating a playlist or a guide.
+const READ_TIMEOUT_SECS: u64 = 120;
+
 const ALLOWED_REQUEST_HEADERS: [&str; 7] = [
     "user-agent",
     "referer",
@@ -59,7 +65,10 @@ impl Default for ProxyOptions {
                 "http://127.0.0.1:4173".into(),
                 "http://localhost:4173".into(),
             ],
-            user_agent: "Orivue/0.2 (+https://github.com/diezlopezjaime/orivue)".into(),
+            // Many IPTV panels drop requests from clients they do not
+            // recognise, so the default identifies as VLC. Sources and the
+            // settings can override it per request.
+            user_agent: "VLC/3.0.21 LibVLC/3.0.21".into(),
         }
     }
 }
@@ -247,11 +256,15 @@ impl ProxyHandle {
                 return Err(ProxyError::UpstreamStatus(status));
             }
             let content_type = header_string(response.headers(), header::CONTENT_TYPE);
+            let limit_error = || {
+                ProxyError::Upstream(format!(
+                    "the source exceeds the size limit of {} MB",
+                    options.max_bytes / (1024 * 1024)
+                ))
+            };
             if let Some(length) = response.content_length() {
                 if length as usize > options.max_bytes {
-                    return Err(ProxyError::Upstream(
-                        "the source exceeds the size limit".into(),
-                    ));
+                    return Err(limit_error());
                 }
             }
             let mut stream = response.bytes_stream();
@@ -259,9 +272,7 @@ impl ProxyHandle {
             while let Some(chunk) = stream.next().await {
                 let chunk = chunk.map_err(|error| ProxyError::Upstream(error.to_string()))?;
                 if buffer.len() + chunk.len() > options.max_bytes {
-                    return Err(ProxyError::Upstream(
-                        "the source exceeds the size limit".into(),
-                    ));
+                    return Err(limit_error());
                 }
                 buffer.extend_from_slice(&chunk);
             }
@@ -274,15 +285,20 @@ impl ProxyHandle {
         };
         tokio::time::timeout(options.timeout, work)
             .await
-            .map_err(|_| ProxyError::Upstream("timeout".into()))?
+            .map_err(|_| {
+                ProxyError::Upstream(format!(
+                    "no response within {} s",
+                    options.timeout.as_secs()
+                ))
+            })?
     }
 }
 
 fn build_client() -> Result<reqwest::Client> {
     reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(Duration::from_secs(15))
-        .read_timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECS))
+        .read_timeout(Duration::from_secs(READ_TIMEOUT_SECS))
         .tcp_nodelay(true)
         .build()
         .map_err(|error| ProxyError::Io(error.to_string()))
@@ -365,8 +381,10 @@ async fn upstream_get(
 }
 
 fn describe_reqwest_error(error: &reqwest::Error) -> String {
-    if error.is_timeout() {
-        "timeout".into()
+    if error.is_connect() && error.is_timeout() {
+        format!("no connection after {CONNECT_TIMEOUT_SECS} s")
+    } else if error.is_timeout() {
+        format!("no data received for {READ_TIMEOUT_SECS} s")
     } else if error.is_connect() {
         "connection failed".into()
     } else {
