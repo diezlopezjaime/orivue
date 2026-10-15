@@ -32,7 +32,10 @@ una prueba manual registrada en el changelog.
 | `acestream://`              | Con motor local      | Con app Ace Stream         | No                      |
 
 Cuando un stream no puede decodificarse, el reproductor muestra el motivo en
-lugar de quedarse cargando.
+lugar de quedarse cargando. La tecla `I` (o `Info` en el mando) muestra búfer,
+velocidad de descarga, fotogramas perdidos y motor, útil para distinguir un
+problema de red (búfer que cae a 0 y descarga por debajo del bitrate) de uno
+de decodificación (fotogramas perdidos con búfer lleno).
 
 ## Cómo obtener e instalar cada artefacto
 

@@ -20,6 +20,17 @@ export interface PlayerCallbacks {
 
 export type AspectMode = 'contain' | 'cover' | 'fill';
 
+/** Live figures for the diagnostics panel (key I). */
+export interface PlayerStats {
+  /** Seconds of media buffered ahead of the playhead. */
+  bufferedSeconds: number;
+  /** Download speed reported by the demuxer, KB/s; null when unknown. */
+  speedKBps: number | null;
+  decodedFrames: number | null;
+  droppedFrames: number | null;
+  playbackRate: number;
+}
+
 export interface Player {
   readonly kind: 'web' | 'native';
   load(stream: StreamHandle, title: string): Promise<void>;
@@ -29,5 +40,6 @@ export interface Player {
   setAspect(mode: AspectMode): void;
   seek(positionSeconds: number): void;
   selectTrack(kind: 'audio' | 'text', id: string | null): void;
+  getStats?(): PlayerStats | undefined;
   destroy(): void;
 }

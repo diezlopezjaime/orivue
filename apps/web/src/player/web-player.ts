@@ -122,10 +122,20 @@ export function createWebPlayer(video: HTMLVideoElement, callbacks: PlayerCallba
       { type: isFlv ? 'flv' : 'mpegts', isLive: true, url: stream.url, cors: true },
       {
         enableWorker: false,
-        liveBufferLatencyChasing: true,
-        liveBufferLatencyMaxLatency: 6,
-        liveBufferLatencyMinRemain: 1.5,
+        // IPTV transport streams arrive in bursts. The "latency chaser" seeks
+        // forward whenever the buffer exceeds a few seconds, which shows up as
+        // a cut every time a burst lands; the synchronizer instead speeds
+        // playback up slightly until the backlog is gone, with no seek.
+        liveBufferLatencyChasing: false,
+        liveSync: true,
+        liveSyncMaxLatency: 12,
+        liveSyncTargetLatency: 6,
+        liveSyncPlaybackRate: 1.1,
+        enableStashBuffer: true,
+        stashInitialSize: 1024 * 1024,
         autoCleanupSourceBuffer: true,
+        autoCleanupMaxBackwardDuration: 60,
+        autoCleanupMinBackwardDuration: 30,
         lazyLoad: false,
         reuseRedirectedURL: true,
       },
@@ -145,8 +155,33 @@ export function createWebPlayer(video: HTMLVideoElement, callbacks: PlayerCallba
     play();
   };
 
+  const bufferedAhead = (): number => {
+    const ranges = video.buffered;
+    const now = video.currentTime;
+    for (let index = 0; index < ranges.length; index += 1) {
+      if (ranges.start(index) <= now + 0.5 && ranges.end(index) >= now) {
+        return Math.max(0, ranges.end(index) - now);
+      }
+    }
+    return 0;
+  };
+
   return {
     kind: 'web',
+    getStats() {
+      const info = (mpegts as { statisticsInfo?: Record<string, unknown> } | undefined)
+        ?.statisticsInfo;
+      const quality = video.getVideoPlaybackQuality?.();
+      const number = (value: unknown): number | null =>
+        typeof value === 'number' && Number.isFinite(value) ? value : null;
+      return {
+        bufferedSeconds: bufferedAhead(),
+        speedKBps: number(info?.speed),
+        decodedFrames: number(info?.decodedFrames) ?? quality?.totalVideoFrames ?? null,
+        droppedFrames: number(info?.droppedFrames) ?? quality?.droppedVideoFrames ?? null,
+        playbackRate: video.playbackRate,
+      };
+    },
     async load(stream) {
       teardown();
       live = stream.live;

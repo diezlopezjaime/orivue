@@ -260,7 +260,13 @@ export const es = {
     hintTv:
       'Arriba/Abajo cambia de canal · Atrás cierra · Play/Pausa pausa · Números cambian de canal',
     hintDesktop:
-      'PgUp / PgDn cambia de canal · Esc cierra · F pantalla completa · Espacio pausa · Números cambian de canal',
+      'PgUp / PgDn cambia de canal · Esc cierra · F pantalla completa · Espacio pausa · Números cambian de canal · I estadísticas',
+    stats: 'Estadísticas de reproducción',
+    statsBuffer: 'Búfer',
+    statsSpeed: 'Descarga',
+    statsFrames: 'Fotogramas perdidos / decodificados',
+    statsRate: 'Velocidad',
+    statsBackend: 'Motor',
     channelLabel: 'Canal',
     nowLive: 'En directo',
     after: 'Después: {title}',

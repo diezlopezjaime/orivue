@@ -8,6 +8,7 @@ import type { StreamHandle } from '../platform';
 import { createNativePlayer } from '../player/native-player';
 import type { Player, PlayerTracks } from '../player/types';
 import { createWebPlayer } from '../player/web-player';
+import type { PlayerStats } from '../player/types';
 import { useAppStore } from '../store';
 import type { Channel, PlaybackStatus, VodTarget } from '../types';
 import { Icon } from './Icon';
@@ -46,6 +47,8 @@ export function PlayerOverlay({
   const shellRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<Player | undefined>(undefined);
   const retryRef = useRef(0);
+  const [showStats, setShowStats] = useState(false);
+  const [stats, setStats] = useState<PlayerStats>();
   const hideTimer = useRef<number | undefined>(undefined);
   const [attempt, setAttempt] = useState(0);
   const [status, setStatus] = useState<PlaybackStatus>('connecting');
@@ -213,6 +216,14 @@ export function PlayerOverlay({
   }, [channel, lastChannel, onChange]);
 
   useEffect(() => {
+    if (!showStats) return;
+    const tick = () => setStats(playerRef.current?.getStats?.());
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [showStats, attempt]);
+
+  useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       showControls();
       const key = event.key;
@@ -244,6 +255,7 @@ export function PlayerOverlay({
       } else if (key.toLowerCase() === 'm' && !typing) setMuted(!muted);
       else if (key.toLowerCase() === 'f' && !typing) void shellRef.current?.requestFullscreen?.();
       else if (key.toLowerCase() === 'r' && !typing) goLast();
+      else if (key.toLowerCase() === 'i' && !typing) setShowStats((value) => !value);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -298,6 +310,26 @@ export function PlayerOverlay({
         <div className="zap-overlay" role="status">
           {digits}
         </div>
+      )}
+      {showStats && (
+        <dl className="player-stats" aria-label={t('player.stats')}>
+          <dt>{t('player.statsBuffer')}</dt>
+          <dd>{stats ? `${stats.bufferedSeconds.toFixed(1)} s` : '—'}</dd>
+          <dt>{t('player.statsSpeed')}</dt>
+          <dd>
+            {stats?.speedKBps !== null && stats ? `${Math.round(stats.speedKBps)} KB/s` : '—'}
+          </dd>
+          <dt>{t('player.statsFrames')}</dt>
+          <dd>
+            {stats?.decodedFrames !== null && stats
+              ? `${stats.droppedFrames ?? 0} / ${stats.decodedFrames}`
+              : '—'}
+          </dd>
+          <dt>{t('player.statsRate')}</dt>
+          <dd>{stats ? `${stats.playbackRate.toFixed(2)}×` : '—'}</dd>
+          <dt>{t('player.statsBackend')}</dt>
+          <dd>{backend === 'native' ? t('player.native') : kindLabel[streamKind] || 'web'}</dd>
+        </dl>
       )}
       <div className={`player-shade ${controlsVisible || status !== 'playing' ? 'visible' : ''}`}>
         <header className="player-top">
