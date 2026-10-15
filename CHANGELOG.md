@@ -34,8 +34,15 @@ Todos los cambios notables se documentarán aquí. El formato sigue
 - Añadir una lista termina en cuanto hay canales; el catálogo y la guía siguen
   cargando en segundo plano con su progreso en la tarjeta.
 
+- Reproducción MPEG-TS en escritorio sin cortes: mpegts.js dejaba de usar el
+  "latency chaser", que saltaba hacia delante cada vez que el búfer superaba
+  6 s (los streams IPTV llegan a ráfagas), y pasa a la sincronización por
+  velocidad (1,1× hasta volver a 6 s de retraso), con búfer inicial de 1 MB.
+
 ### Añadido
 
+- Panel de estadísticas del reproductor con la tecla `I`: búfer, descarga,
+  fotogramas perdidos, velocidad y motor, para diagnosticar cortes.
 - Categorías a importar por lista (Mis listas → Categorías): buscador,
   selección múltiple y "marcar/desmarcar visibles". Las categorías no elegidas
   no se descargan ni se guardan y la guía solo conserva los programas de los

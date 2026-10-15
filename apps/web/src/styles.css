@@ -1724,3 +1724,30 @@ html[data-tv='true'] .seek-bar input[type='range'] {
   gap: 8px;
   margin-top: 10px;
 }
+
+.player-stats {
+  position: fixed;
+  top: 24px;
+  left: 32px;
+  z-index: 130;
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 2px 14px;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(9, 11, 16, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e6e9f0;
+  font:
+    500 13px/1.4 'DM Sans',
+    system-ui,
+    sans-serif;
+}
+.player-stats dt {
+  color: var(--muted);
+}
+.player-stats dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
